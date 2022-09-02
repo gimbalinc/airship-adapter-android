@@ -1,4 +1,4 @@
-# Airship Gimbal Adapter
+# Gimbal Airship Adapter
 
 The Airship Gimbal Adapter is a drop-in class that allows users to integrate Gimbal Place events with
 Urban Airship.
