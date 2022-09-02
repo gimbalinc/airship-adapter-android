@@ -140,27 +140,7 @@ public class AirshipAdapter {
                 cachedVisits.add(new CachedVisit(visit, RegionEvent.BOUNDARY_EVENT_ENTER));
                 return;
             }
-            UAirship.shared(airship -> {
-                if (preferences.getBoolean(TRACK_REGION_EVENT_PREFERENCE_KEY, false)) {
-                    RegionEvent event = createRegionEvent(visit, RegionEvent.BOUNDARY_EVENT_ENTER);
-
-                    airship.getAnalytics().addEvent(event);
-
-                    for (Listener listener : listeners) {
-                        listener.onRegionEntered(event, visit);
-                    }
-                }
-
-                if (preferences.getBoolean(TRACK_CUSTOM_ENTRY_PREFERENCE_KEY, false)) {
-                    CustomEvent event = createCustomEvent(CUSTOM_ENTRY_EVENT_NAME, visit, RegionEvent.BOUNDARY_EVENT_ENTER);
-
-                    airship.getAnalytics().addEvent(event);
-
-                    for (Listener listener : listeners) {
-                        listener.onCustomRegionEntry(event, visit);
-                    }
-                }
-            });
+            createAirshipEvent(visit, RegionEvent.BOUNDARY_EVENT_ENTER);
         }
 
         @Override
@@ -174,28 +154,7 @@ public class AirshipAdapter {
                 cachedVisits.add(new CachedVisit(visit, RegionEvent.BOUNDARY_EVENT_EXIT));
                 return;
             }
-            UAirship.shared(airship -> {
-
-                if (preferences.getBoolean(TRACK_REGION_EVENT_PREFERENCE_KEY, false)) {
-                    RegionEvent event = createRegionEvent(visit, RegionEvent.BOUNDARY_EVENT_EXIT);
-
-                    airship.getAnalytics().addEvent(event);
-
-                    for (Listener listener : listeners) {
-                        listener.onRegionExited(event, visit);
-                    }
-                }
-
-                if (preferences.getBoolean(TRACK_CUSTOM_EXIT_PREFERENCE_KEY, false)) {
-                    CustomEvent event = createCustomEvent(CUSTOM_EXIT_EVENT_NAME, visit, RegionEvent.BOUNDARY_EVENT_EXIT);
-
-                    airship.getAnalytics().addEvent(event);
-
-                    for (Listener listener : listeners) {
-                        listener.onCustomRegionExit(event, visit);
-                    }
-                }
-            });
+            createAirshipEvent(visit, RegionEvent.BOUNDARY_EVENT_EXIT);
         }
     };
 
@@ -220,7 +179,7 @@ public class AirshipAdapter {
         return instance;
     }
 
-    public void unloadQueuedEvents() {
+    void unloadQueuedEvents() {
         for (CachedVisit cachedVisit: cachedVisits) {
             createAirshipEvent(cachedVisit.visit, cachedVisit.regionEvent);
         }
