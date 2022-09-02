@@ -264,7 +264,6 @@ public class AirshipAdapter {
         }
 
         return builder
-                .addProperty("placeAttributes", JsonValue.wrapOpt(placeAttributesCopy))
                 .addProperty("visitID", visit.getVisitID())
                 .addProperty("placeIdentifier", visit.getPlace().getIdentifier())
                 .addProperty("placeName", visit.getPlace().getName())
