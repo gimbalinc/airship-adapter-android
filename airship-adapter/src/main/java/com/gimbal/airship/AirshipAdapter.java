@@ -29,14 +29,11 @@ import com.urbanairship.UAirship;
 import com.urbanairship.analytics.CustomEvent;
 import com.urbanairship.analytics.location.RegionEvent;
 import com.urbanairship.channel.AirshipChannelListener;
-import com.urbanairship.json.JsonValue;
 import com.urbanairship.util.DateUtils;
 import com.urbanairship.util.HelperActivity;
 
-import java.util.HashMap;
 import java.util.LinkedList;
 import java.util.List;
-import java.util.NoSuchElementException;
 import java.util.concurrent.CopyOnWriteArrayList;
 
 /**
@@ -252,13 +249,11 @@ public class AirshipAdapter {
     }
 
     private CustomEvent.Builder createCustomEventBuilder(String eventName, Visit visit, final int boundaryEvent) {
-        HashMap<String, String> placeAttributesCopy = new HashMap<>();
         Attributes placeAttributes = visit.getPlace().getAttributes();
 
         CustomEvent.Builder builder = CustomEvent.newBuilder(eventName);
         if (placeAttributes != null) {
             for (String key : placeAttributes.getAllKeys()) {
-                placeAttributesCopy.put(key, placeAttributes.getValue(key));
                 builder.addProperty("GMBL_PA_" + key, placeAttributes.getValue(key));
             }
         }
