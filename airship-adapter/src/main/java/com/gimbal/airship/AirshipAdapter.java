@@ -539,14 +539,14 @@ public class AirshipAdapter {
             }
         }
     }
-}
 
-class CachedVisit {
-    Visit visit;
-    int regionEvent;
+    private static class CachedVisit {
+        Visit visit;
+        int regionEvent;
 
-    CachedVisit(Visit visit, int event) {
-        this.visit = visit;
-        this.regionEvent = event;
+        CachedVisit(Visit visit, int event) {
+            this.visit = visit;
+            this.regionEvent = event;
+        }
     }
 }
