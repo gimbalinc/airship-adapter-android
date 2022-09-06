@@ -29,6 +29,10 @@ buildscript {
     }
 }
 
+plugins {
+    id 'io.github.gradle-nexus.publish-plugin' version "$nexusPublishPluginVersion"
+}
+
 allprojects {
     repositories {
         google()
@@ -44,5 +48,14 @@ task clean(type: Delete) {
 task getVersion() {
     doLast {
         println adapterVersion
+    }
+}
+
+nexusPublishing {
+    def profileId = System.getenv("SONATYPE_STAGING_PROFILE_ID") ?: findProperty("sonatypeStagingProfileId")
+    repositories {
+        sonatype {
+            stagingProfileId = profileId
+        }
     }
 }

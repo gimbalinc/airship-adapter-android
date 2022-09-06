@@ -29,11 +29,10 @@ import com.urbanairship.UAirship;
 import com.urbanairship.analytics.CustomEvent;
 import com.urbanairship.analytics.location.RegionEvent;
 import com.urbanairship.channel.AirshipChannelListener;
-import com.urbanairship.json.JsonValue;
 import com.urbanairship.util.DateUtils;
 import com.urbanairship.util.HelperActivity;
 
-import java.util.HashMap;
+import java.util.LinkedList;
 import java.util.List;
 import java.util.concurrent.CopyOnWriteArrayList;
 
@@ -69,6 +68,7 @@ public class AirshipAdapter {
     private final List<Listener> listeners = new CopyOnWriteArrayList<>();
     private boolean isAdapterStarted = false;
     private RequestPermissionsTask requestPermissionsTask;
+    private LinkedList<CachedVisit> cachedVisits = new LinkedList<>();
 
 
     /**
@@ -132,27 +132,12 @@ public class AirshipAdapter {
             Log.i(TAG, "Entered place: " + visit.getPlace().getName() + "Entrance date: " +
                     DateUtils.createIso8601TimeStamp(visit.getArrivalTimeInMillis()));
 
-            UAirship.shared(airship -> {
-                if (preferences.getBoolean(TRACK_REGION_EVENT_PREFERENCE_KEY, false)) {
-                    RegionEvent event = createRegionEvent(visit, RegionEvent.BOUNDARY_EVENT_ENTER);
-
-                    airship.getAnalytics().addEvent(event);
-
-                    for (Listener listener : listeners) {
-                        listener.onRegionEntered(event, visit);
-                    }
-                }
-
-                if (preferences.getBoolean(TRACK_CUSTOM_ENTRY_PREFERENCE_KEY, false)) {
-                    CustomEvent event = createCustomEvent(CUSTOM_ENTRY_EVENT_NAME, visit, RegionEvent.BOUNDARY_EVENT_ENTER);
-
-                    airship.getAnalytics().addEvent(event);
-
-                    for (Listener listener : listeners) {
-                        listener.onCustomRegionEntry(event, visit);
-                    }
-                }
-            });
+            // If Airship is not ready yet, store visit for later
+            if (!UAirship.isFlying() && !UAirship.isTakingOff()) {
+                cachedVisits.add(new CachedVisit(visit, RegionEvent.BOUNDARY_EVENT_ENTER));
+                return;
+            }
+            createAirshipEvent(visit, RegionEvent.BOUNDARY_EVENT_ENTER);
         }
 
         @Override
@@ -161,67 +146,12 @@ public class AirshipAdapter {
                     DateUtils.createIso8601TimeStamp(visit.getArrivalTimeInMillis()) + "Exit date:" +
                     DateUtils.createIso8601TimeStamp(visit.getDepartureTimeInMillis()));
 
-            UAirship.shared(airship -> {
-
-                if (preferences.getBoolean(TRACK_REGION_EVENT_PREFERENCE_KEY, false)) {
-                    RegionEvent event = createRegionEvent(visit, RegionEvent.BOUNDARY_EVENT_EXIT);
-
-                    airship.getAnalytics().addEvent(event);
-
-                    for (Listener listener : listeners) {
-                        listener.onRegionExited(event, visit);
-                    }
-                }
-
-                if (preferences.getBoolean(TRACK_CUSTOM_EXIT_PREFERENCE_KEY, false)) {
-                    CustomEvent event = createCustomEvent(CUSTOM_EXIT_EVENT_NAME, visit, RegionEvent.BOUNDARY_EVENT_EXIT);
-
-                    airship.getAnalytics().addEvent(event);
-
-                    for (Listener listener : listeners) {
-                        listener.onCustomRegionExit(event, visit);
-                    }
-                }
-            });
-        }
-
-        private RegionEvent createRegionEvent(Visit visit, int boundaryEvent) {
-            return RegionEvent.newBuilder()
-                    .setBoundaryEvent(boundaryEvent)
-                    .setSource(SOURCE)
-                    .setRegionId(visit.getPlace().getIdentifier())
-                    .build();
-        }
-
-        private CustomEvent createCustomEvent(final String eventName, final Visit visit, final int boundaryEvent) {
-            if (boundaryEvent == RegionEvent.BOUNDARY_EVENT_ENTER) {
-                return createCustomEventBuilder(eventName, visit, boundaryEvent).build();
-            } else {
-                return createCustomEventBuilder(eventName, visit, boundaryEvent)
-                        .addProperty("dwellTimeInSeconds", visit.getDwellTimeInMillis() / 1000)
-                        .build();
+            // If Airship is not ready yet, store visit for later
+            if (!UAirship.isFlying() && !UAirship.isTakingOff()) {
+                cachedVisits.add(new CachedVisit(visit, RegionEvent.BOUNDARY_EVENT_EXIT));
+                return;
             }
-        }
-
-        private CustomEvent.Builder createCustomEventBuilder(String eventName, Visit visit, final int boundaryEvent) {
-            HashMap<String, String> placeAttributesCopy = new HashMap<>();
-            Attributes placeAttributes = visit.getPlace().getAttributes();
-
-            CustomEvent.Builder builder = CustomEvent.newBuilder(eventName);
-            if (placeAttributes != null) {
-                for (String key : placeAttributes.getAllKeys()) {
-                    placeAttributesCopy.put(key, placeAttributes.getValue(key));
-                    builder.addProperty("GMBL_PA_" + key, placeAttributes.getValue(key));
-                }
-            }
-
-            return builder
-                    .addProperty("placeAttributes", JsonValue.wrapOpt(placeAttributesCopy))
-                    .addProperty("visitID", visit.getVisitID())
-                    .addProperty("placeIdentifier", visit.getPlace().getIdentifier())
-                    .addProperty("placeName", visit.getPlace().getName())
-                    .addProperty("source", SOURCE)
-                    .addProperty("boundaryEvent", boundaryEvent);
+            createAirshipEvent(visit, RegionEvent.BOUNDARY_EVENT_EXIT);
         }
     };
 
@@ -244,6 +174,96 @@ public class AirshipAdapter {
         }
 
         return instance;
+    }
+
+    void unloadQueuedEvents() {
+        for (CachedVisit cachedVisit: cachedVisits) {
+            createAirshipEvent(cachedVisit.visit, cachedVisit.regionEvent);
+        }
+        cachedVisits = new LinkedList<>();
+    }
+
+    private void createAirshipEvent(Visit visit, int regionEvent) {
+        UAirship airship = UAirship.shared();
+        if (regionEvent == RegionEvent.BOUNDARY_EVENT_ENTER) {
+            if (preferences.getBoolean(TRACK_REGION_EVENT_PREFERENCE_KEY, false)) {
+                RegionEvent event = createRegionEvent(visit, RegionEvent.BOUNDARY_EVENT_ENTER);
+
+                airship.getAnalytics().addEvent(event);
+
+                for (Listener listener : listeners) {
+                    listener.onRegionEntered(event, visit);
+                }
+            }
+
+            if (preferences.getBoolean(TRACK_CUSTOM_ENTRY_PREFERENCE_KEY, false)) {
+                CustomEvent event = createCustomEvent(CUSTOM_ENTRY_EVENT_NAME, visit, RegionEvent.BOUNDARY_EVENT_ENTER);
+
+                airship.getAnalytics().addEvent(event);
+
+                for (Listener listener : listeners) {
+                    listener.onCustomRegionEntry(event, visit);
+                }
+            }
+        }
+
+        if (regionEvent == RegionEvent.BOUNDARY_EVENT_EXIT) {
+            if (preferences.getBoolean(TRACK_REGION_EVENT_PREFERENCE_KEY, false)) {
+                RegionEvent event = createRegionEvent(visit, RegionEvent.BOUNDARY_EVENT_EXIT);
+
+                airship.getAnalytics().addEvent(event);
+
+                for (Listener listener : listeners) {
+                    listener.onRegionExited(event, visit);
+                }
+            }
+
+            if (preferences.getBoolean(TRACK_CUSTOM_EXIT_PREFERENCE_KEY, false)) {
+                CustomEvent event = createCustomEvent(CUSTOM_EXIT_EVENT_NAME, visit, RegionEvent.BOUNDARY_EVENT_EXIT);
+
+                airship.getAnalytics().addEvent(event);
+
+                for (Listener listener : listeners) {
+                    listener.onCustomRegionExit(event, visit);
+                }
+            }
+        }
+    }
+
+    private RegionEvent createRegionEvent(Visit visit, int boundaryEvent) {
+        return RegionEvent.newBuilder()
+                .setBoundaryEvent(boundaryEvent)
+                .setSource(SOURCE)
+                .setRegionId(visit.getPlace().getIdentifier())
+                .build();
+    }
+
+    private CustomEvent createCustomEvent(final String eventName, final Visit visit, final int boundaryEvent) {
+        if (boundaryEvent == RegionEvent.BOUNDARY_EVENT_ENTER) {
+            return createCustomEventBuilder(eventName, visit, boundaryEvent).build();
+        } else {
+            return createCustomEventBuilder(eventName, visit, boundaryEvent)
+                    .addProperty("dwellTimeInSeconds", visit.getDwellTimeInMillis() / 1000)
+                    .build();
+        }
+    }
+
+    private CustomEvent.Builder createCustomEventBuilder(String eventName, Visit visit, final int boundaryEvent) {
+        Attributes placeAttributes = visit.getPlace().getAttributes();
+
+        CustomEvent.Builder builder = CustomEvent.newBuilder(eventName);
+        if (placeAttributes != null) {
+            for (String key : placeAttributes.getAllKeys()) {
+                builder.addProperty("GMBL_PA_" + key, placeAttributes.getValue(key));
+            }
+        }
+
+        return builder
+                .addProperty("visitID", visit.getVisitID())
+                .addProperty("placeIdentifier", visit.getPlace().getIdentifier())
+                .addProperty("placeName", visit.getPlace().getName())
+                .addProperty("source", SOURCE)
+                .addProperty("boundaryEvent", boundaryEvent);
     }
 
     /**
@@ -517,6 +537,16 @@ public class AirshipAdapter {
             if (callback != null) {
                 callback.onResult(result);
             }
+        }
+    }
+
+    private static class CachedVisit {
+        Visit visit;
+        int regionEvent;
+
+        CachedVisit(Visit visit, int event) {
+            this.visit = visit;
+            this.regionEvent = event;
         }
     }
 }
