@@ -281,17 +281,6 @@ public class AirshipAdapter {
      * Removes an adapter listener.
      *
      * @param listener The listener.
-     * @deprecated Will be removed in 5.0.0, use {@link #removeListener(Listener)} instead.
-     */
-    @Deprecated
-    public void removeListner(@NonNull Listener listener) {
-        removeListener(listener);
-    }
-
-    /**
-     * Removes an adapter listener.
-     *
-     * @param listener The listener.
      */
     public void removeListener(@NonNull Listener listener) {
         synchronized (listeners) {
@@ -300,8 +289,11 @@ public class AirshipAdapter {
     }
 
     /**
-     * Restores the last run state. If previously started it will start listening, otherwise
-     * it will stop listening. Should be called when the application starts up.
+     * Restores the last run state. If previously started it will start listening.
+     * This should be called early during app initialization in order to
+     * reliably process background location or beacon events. Called automatically by
+     * <code>AirshipAdapterInitializer</code> but may be called in `Application.onCreate()` if
+     * manual initialization is desired.
      */
     public void restore() {
         String gimbalApiKey = preferences.getString(API_KEY_PREFERENCE, null);
@@ -312,7 +304,7 @@ public class AirshipAdapter {
             if (isStarted()) {
                 Log.i(TAG, "Gimbal adapter restored");
             } else {
-                Log.e(TAG, "Failed to restore Gimbal adapter. Make sure the API key is being set Application#onCreate");
+                Log.e(TAG, "Failed to restore Gimbal adapter");
             }
         }
     }
