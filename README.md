@@ -7,6 +7,7 @@ with the Airship SDK for Android.
 - [Gimbal Developer Guide](https://gimbal.com/doc/android/v4/devguide.html)
 - [Gimbal Manager Portal](https://manager.gimbal.com)
 - [Airship Getting Started guide](https://docs.airship.com/platform/android/getting-started/)
+- [Airship and Gimbal Integration guide](https://docs.airship.com/partners/gimbal/)
 
 ## Installation
 
@@ -66,6 +67,32 @@ the adapter.
 
 Note: You will need `ACCESS_BACKGROUND_LOCATION` permissions to use Gimbal's background features
 
+## Enabling Event Tracking
+By default, event tracking is disabled, and thus must be explicitly enabled as described below.
+
+### RegionEvents
+To enable or disable the tracking of Airship RegionEvent objects, use the shouldTrackRegionEvents property:
+
+AirshipAdapter.shared.shouldTrackRegionEvents = true // enabled
+AirshipAdapter.shared.shouldTrackRegionEvents = false // disabled
+
+### CustomEvents
+To enable or disable the tracking of Airship CustomEvent objects, use the shouldTrackCustomEntryEvents and shouldTrackCustomExitEvents properties to track events upon place entry and exit, as shown below. For more information regarding Airship Custom Events, see the documentation here.
+
+```java
+    // To enable CustomEvent tracking for place exits
+    AirshipAdapter.shared(UAirship.getApplicationContext()).setShouldTrackCustomExitEvent(true);
+
+    // To disable CustomEvent tracking for place exits
+    AirshipAdapter.shared(UAirship.getApplicationContext()).setShouldTrackCustomExitEvent(false);
+    
+    // To enable CustomEvent tracking for place entries
+    AirshipAdapter.shared(UAirship.getApplicationContext()).setShouldTrackCustomEntryEvent(true);
+    
+    // To disable CustomEvent tracking for place entries
+    AirshipAdapter.shared(UAirship.getApplicationContext()).setShouldTrackCustomEntryEvent(false);
+```
+
 ## Stopping the adapter
 
 Adapter can be stopped at anytime by calling:
@@ -76,3 +103,8 @@ Adapter can be stopped at anytime by calling:
 
 Once `stop()` is called, Gimbal location event processing will not restart upon subsequent app
 starts.
+
+## AirshipGimbalAdapter Migration
+
+update gradle dependency to `com.gimbal.android.v4:airship-adapter:1.0.0`
+update all references to the `AirshipGimbalAdapter` class should be changed to `AirshipAdapter`
