@@ -11,7 +11,6 @@ import android.app.Application;
 import android.content.Context;
 import android.content.SharedPreferences;
 import android.content.pm.PackageManager;
-import android.os.AsyncTask;
 import android.util.Log;
 
 import androidx.annotation.NonNull;
@@ -29,8 +28,9 @@ import com.urbanairship.UAirship;
 import com.urbanairship.analytics.CustomEvent;
 import com.urbanairship.analytics.location.RegionEvent;
 import com.urbanairship.channel.AirshipChannelListener;
+import com.urbanairship.permission.PermissionStatus;
+import com.urbanairship.permission.PermissionsActivity;
 import com.urbanairship.util.DateUtils;
-import com.urbanairship.util.HelperActivity;
 
 import java.util.LinkedList;
 import java.util.List;
@@ -67,8 +67,8 @@ public class AirshipAdapter {
     private final Context context;
     private final List<Listener> listeners = new CopyOnWriteArrayList<>();
     private boolean isAdapterStarted = false;
-    private RequestPermissionsTask requestPermissionsTask;
-    private LinkedList<CachedVisit> cachedVisits = new LinkedList<>();
+    private final LinkedList<CachedVisit> cachedVisits = new LinkedList<>();
+
 
 
     /**
@@ -132,11 +132,6 @@ public class AirshipAdapter {
             Log.i(TAG, "Entered place: " + visit.getPlace().getName() + "Entrance date: " +
                     DateUtils.createIso8601TimeStamp(visit.getArrivalTimeInMillis()));
 
-            // If Airship is not ready yet, store visit for later
-            if (!UAirship.isFlying() && !UAirship.isTakingOff()) {
-                cachedVisits.add(new CachedVisit(visit, RegionEvent.BOUNDARY_EVENT_ENTER));
-                return;
-            }
             createAirshipEvent(visit, RegionEvent.BOUNDARY_EVENT_ENTER);
         }
 
@@ -146,11 +141,6 @@ public class AirshipAdapter {
                     DateUtils.createIso8601TimeStamp(visit.getArrivalTimeInMillis()) + "Exit date:" +
                     DateUtils.createIso8601TimeStamp(visit.getDepartureTimeInMillis()));
 
-            // If Airship is not ready yet, store visit for later
-            if (!UAirship.isFlying() && !UAirship.isTakingOff()) {
-                cachedVisits.add(new CachedVisit(visit, RegionEvent.BOUNDARY_EVENT_EXIT));
-                return;
-            }
             createAirshipEvent(visit, RegionEvent.BOUNDARY_EVENT_EXIT);
         }
     };
@@ -176,14 +166,46 @@ public class AirshipAdapter {
         return instance;
     }
 
-    void unloadQueuedEvents() {
-        for (CachedVisit cachedVisit: cachedVisits) {
-            createAirshipEvent(cachedVisit.visit, cachedVisit.regionEvent);
+    void onAirshipReady() {
+        UAirship.shared().getChannel().addChannelListener(new AirshipChannelListener() {
+            @Override
+            public void onChannelCreated(@NonNull String channelId) {
+                if (isAdapterStarted) {
+                    updateDeviceAttributes();
+                }
+            }
+
+            @Override
+            public void onChannelUpdated(@NonNull String channelId) {
+
+            }
+        });
+
+        if (isAdapterStarted) {
+            updateDeviceAttributes();
+
+            synchronized (cachedVisits) {
+                List<CachedVisit> copy = new LinkedList<>(cachedVisits);
+                cachedVisits.clear();
+
+                for (CachedVisit cachedVisit : copy) {
+                    createAirshipEvent(cachedVisit.visit, cachedVisit.regionEvent);
+                }
+            }
         }
-        cachedVisits = new LinkedList<>();
     }
 
     private void createAirshipEvent(Visit visit, int regionEvent) {
+        if (!isAirshipReady()) {
+            synchronized (cachedVisits) {
+                // If Airship is not ready yet, store visit for later
+                if (!isAirshipReady()) {
+                    cachedVisits.add(new CachedVisit(visit, RegionEvent.BOUNDARY_EVENT_ENTER));
+                    return;
+                }
+            }
+        }
+
         UAirship airship = UAirship.shared();
         if (regionEvent == RegionEvent.BOUNDARY_EVENT_ENTER) {
             if (preferences.getBoolean(TRACK_REGION_EVENT_PREFERENCE_KEY, false)) {
@@ -346,21 +368,19 @@ public class AirshipAdapter {
      * @param gimbalApiKey The Gimbal API key.
      * @param callback     Optional callback to get the result of the permission prompt.
      */
+    @SuppressLint("RestrictedApi")
     public void startWithPermissionPrompt(@NonNull final String gimbalApiKey, @Nullable final PermissionResultCallback callback) {
-        requestPermissionsTask = new RequestPermissionsTask(context.getApplicationContext(), enabled -> {
-            if (enabled) {
-                //noinspection MissingPermission
+        PermissionsActivity.requestPermission(context, ACCESS_FINE_LOCATION, requestResult -> {
+            boolean granted = requestResult.getPermissionStatus() == PermissionStatus.GRANTED;
+            if (granted) {
                 startAdapter(gimbalApiKey);
             }
 
             if (callback != null) {
-                callback.onResult(enabled);
+                callback.onResult(granted);
             }
         });
-
-        requestPermissionsTask.executeOnExecutor(AsyncTask.THREAD_POOL_EXECUTOR, ACCESS_FINE_LOCATION);
     }
-
 
     private void startAdapter(@NonNull String gimbalApiKey) {
         if (isAdapterStarted) {
@@ -379,19 +399,6 @@ public class AirshipAdapter {
             updateDeviceAttributes();
             Log.i(TAG, String.format("Gimbal Adapter started. Gimbal.isStarted: %b, Gimbal application instance identifier: %s", Gimbal.isStarted(), Gimbal.getApplicationInstanceIdentifier()));
             isAdapterStarted = true;
-            UAirship.shared(airship -> {
-                updateDeviceAttributes();
-                airship.getChannel().addChannelListener(new AirshipChannelListener() {
-                    @Override
-                    public void onChannelCreated(@NonNull String channelId) {
-                        updateDeviceAttributes();
-                    }
-
-                    @Override
-                    public void onChannelUpdated(@NonNull String channelId) {
-                    }
-                });
-            });
         } catch (Exception e) {
             Log.e(TAG,"Failed to start Gimbal.", e);
         }
@@ -404,10 +411,6 @@ public class AirshipAdapter {
         if (!isStarted()) {
             Log.w(TAG, "stop() called when adapter was not started");
             return;
-        }
-
-        if (requestPermissionsTask != null) {
-            requestPermissionsTask.cancel(true);
         }
 
         preferences.edit()
@@ -449,15 +452,6 @@ public class AirshipAdapter {
     }
 
     /**
-     * Called when the airship channel is created.
-     */
-    public void onAirshipChannelCreated() {
-        if (isStarted()) {
-            updateDeviceAttributes();
-        }
-    }
-
-    /**
      * Set whether the adapter should create a CustomEvent upon Gimbal Place entry.
      * */
     public void setShouldTrackCustomEntryEvent(Boolean shouldTrackCustomEntryEvent) {
@@ -482,6 +476,10 @@ public class AirshipAdapter {
      * Updates Gimbal and Urban Airship device attributes.
      */
     private void updateDeviceAttributes() {
+        if (!isAirshipReady()) {
+            return;
+        }
+
         DeviceAttributesManager deviceAttributesManager = DeviceAttributesManager.getInstance();
 
         if (deviceAttributesManager == null) {
@@ -500,36 +498,8 @@ public class AirshipAdapter {
         }
     }
 
-    private static class RequestPermissionsTask extends AsyncTask<String, Void, Boolean> {
-
-        @SuppressLint("StaticFieldLeak")
-        private final Context context;
-        private final PermissionResultCallback callback;
-
-
-        RequestPermissionsTask(Context context, PermissionResultCallback callback) {
-            this.context = context;
-            this.callback = callback;
-        }
-
-        @Override
-        protected Boolean doInBackground(String... permissions) {
-            int[] result = HelperActivity.requestPermissions(context, permissions);
-            for (int element : result) {
-                if (element == PackageManager.PERMISSION_GRANTED) {
-                    return true;
-                }
-            }
-
-            return false;
-        }
-
-        @Override
-        protected void onPostExecute(Boolean result) {
-            if (callback != null) {
-                callback.onResult(result);
-            }
-        }
+    private boolean isAirshipReady() {
+        return UAirship.isFlying() || UAirship.isTakingOff();
     }
 
     private static class CachedVisit {
