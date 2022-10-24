@@ -81,16 +81,16 @@ To enable or disable the tracking of Airship CustomEvent objects, use the should
 
 ```java
     // To enable CustomEvent tracking for place exits
-    AirshipAdapter.shared(UAirship.getApplicationContext()).setShouldTrackCustomExitEvent(true);
+    AirshipAdapter.shared(context).setShouldTrackCustomExitEvent(true);
 
     // To disable CustomEvent tracking for place exits
-    AirshipAdapter.shared(UAirship.getApplicationContext()).setShouldTrackCustomExitEvent(false);
+    AirshipAdapter.shared(context).setShouldTrackCustomExitEvent(false);
     
     // To enable CustomEvent tracking for place entries
-    AirshipAdapter.shared(UAirship.getApplicationContext()).setShouldTrackCustomEntryEvent(true);
+    AirshipAdapter.shared(context).setShouldTrackCustomEntryEvent(true);
     
     // To disable CustomEvent tracking for place entries
-    AirshipAdapter.shared(UAirship.getApplicationContext()).setShouldTrackCustomEntryEvent(false);
+    AirshipAdapter.shared(context).setShouldTrackCustomEntryEvent(false);
 ```
 
 ## Stopping the adapter
