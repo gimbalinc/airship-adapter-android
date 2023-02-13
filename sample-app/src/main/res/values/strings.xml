@@ -1,0 +1,8 @@
+<resources>
+    <string name="app_name">Gimbal Airship Sample App</string>
+    <string name="location_permission_title">Allow Location Services</string>
+    <string name="location_permission_body">We use location in order to determine when you\'ve entered a Gimbal Place.</string>
+    <string name="notification_permission_title">Allow Notifications</string>
+    <string name="notification_permission_body">The Airship adapter requires notification permissions to function.</string>
+    <string name="continue_button">Continue</string>
+</resources>
