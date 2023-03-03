@@ -69,6 +69,24 @@ Note: You will need `ACCESS_BACKGROUND_LOCATION` permissions to use Gimbal's bac
 
 ## Enabling Event Tracking
 By default, event tracking is disabled, and thus must be explicitly enabled as described below.
+New apps should use CustomEvents rather than RegionEvents.
+
+### CustomEvents
+To enable or disable the tracking of Airship CustomEvent objects, use the shouldTrackCustomEntryEvents and shouldTrackCustomExitEvents properties to track events upon place entry and exit, as shown below. For more information regarding Airship Custom Events, see the documentation here.
+
+```java
+    // To enable CustomEvent tracking for place exits
+    AirshipAdapter.shared(context).setShouldTrackCustomExitEvent(true);
+
+    // To disable CustomEvent tracking for place exits
+    AirshipAdapter.shared(context).setShouldTrackCustomExitEvent(false);
+    
+    // To enable CustomEvent tracking for place entries
+    AirshipAdapter.shared(context).setShouldTrackCustomEntryEvent(true);
+    
+    // To disable CustomEvent tracking for place entries
+    AirshipAdapter.shared(context).setShouldTrackCustomEntryEvent(false);
+```
 
 ### RegionEvents
 To enable or disable the tracking of Airship RegionEvent objects, use the shouldTrackRegionEvents property:
@@ -76,22 +94,6 @@ To enable or disable the tracking of Airship RegionEvent objects, use the should
 AirshipAdapter.shared.shouldTrackRegionEvents = true // enabled
 AirshipAdapter.shared.shouldTrackRegionEvents = false // disabled
 
-### CustomEvents
-To enable or disable the tracking of Airship CustomEvent objects, use the shouldTrackCustomEntryEvents and shouldTrackCustomExitEvents properties to track events upon place entry and exit, as shown below. For more information regarding Airship Custom Events, see the documentation here.
-
-```java
-    // To enable CustomEvent tracking for place exits
-    AirshipAdapter.shared(UAirship.getApplicationContext()).setShouldTrackCustomExitEvent(true);
-
-    // To disable CustomEvent tracking for place exits
-    AirshipAdapter.shared(UAirship.getApplicationContext()).setShouldTrackCustomExitEvent(false);
-    
-    // To enable CustomEvent tracking for place entries
-    AirshipAdapter.shared(UAirship.getApplicationContext()).setShouldTrackCustomEntryEvent(true);
-    
-    // To disable CustomEvent tracking for place entries
-    AirshipAdapter.shared(UAirship.getApplicationContext()).setShouldTrackCustomEntryEvent(false);
-```
 
 ## Stopping the adapter
 
