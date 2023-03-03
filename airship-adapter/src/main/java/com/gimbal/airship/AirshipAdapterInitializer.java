@@ -5,6 +5,8 @@ import android.content.Context;
 import androidx.annotation.NonNull;
 import androidx.startup.Initializer;
 
+import com.urbanairship.AirshipInitializer;
+
 import java.util.Collections;
 import java.util.List;
 
@@ -20,6 +22,6 @@ public class AirshipAdapterInitializer implements Initializer<AirshipAdapter> {
    @NonNull
    @Override
    public List<Class<? extends Initializer<?>>> dependencies() {
-      return Collections.emptyList();
+      return Collections.singletonList(AirshipInitializer.class);
    }
 }
