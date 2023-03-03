@@ -59,7 +59,7 @@ public class AirshipAdapter {
     private final List<Listener> listeners = new CopyOnWriteArrayList<>();
     private boolean isAdapterStarted = false;
     private final LinkedList<CachedVisit> cachedVisits = new LinkedList<>();
-    
+
     /**
      * Adapter listener.
      */
@@ -99,6 +99,227 @@ public class AirshipAdapter {
     }
 
     /**
+     * Hidden to support the singleton pattern.
+     *
+     * @param context The application context.
+     */
+    AirshipAdapter(@NonNull Context context) {
+        this.context = context.getApplicationContext();
+        this.preferences = context.getSharedPreferences(PREFERENCE_NAME, Context.MODE_PRIVATE);
+    }
+
+    /**
+     * GimbalAdapter shared instance.
+     */
+    public synchronized static AirshipAdapter shared(@NonNull Context context) {
+        if (instance == null) {
+            instance = new AirshipAdapter(context.getApplicationContext());
+        }
+
+        return instance;
+    }
+
+    /**
+     * Restores the last run state. If previously started it will start listening.
+     * This should be called early during app initialization in order to
+     * reliably process background location or beacon events. Called automatically by
+     * <code>AirshipAdapterInitializer</code> but may be called in `Application.onCreate()` if
+     * manual initialization is desired.
+     */
+    public void restore() {
+        String gimbalApiKey = preferences.getString(API_KEY_PREFERENCE, null);
+        boolean previouslyStarted = preferences.getBoolean(STARTED_PREFERENCE, false);
+        if (gimbalApiKey != null && previouslyStarted) {
+            Log.i(TAG, "Restoring Gimbal Adapter");
+            startAdapter(gimbalApiKey);
+            if (isStarted()) {
+                Log.i(TAG, "Gimbal adapter restored");
+            } else {
+                Log.e(TAG, "Failed to restore Gimbal adapter");
+            }
+        }
+    }
+
+    /**
+     * Starts the adapter.
+     * <p>
+     * b>Note:</b> The adapter will fail to listen for places if the application does not have proper
+     * permissions.
+     *
+     * @param gimbalApiKey The Gimbal API key.
+     * @return {@code true} if the adapter started, otherwise {@code false}.
+     */
+    public boolean start(@NonNull String gimbalApiKey) {
+        startAdapter(gimbalApiKey);
+        return isStarted();
+    }
+
+    /**
+     * Stops the adapter.
+     */
+    public void stop() {
+        if (!isStarted()) {
+            Log.w(TAG, "stop() called when adapter was not started");
+            return;
+        }
+
+        preferences.edit()
+                .putBoolean(STARTED_PREFERENCE, false)
+                .apply();
+
+        try {
+            Gimbal.stop();
+            PlaceManager.getInstance().removeListener(placeEventListener);
+            isAdapterStarted = false;
+            Log.i(TAG, "Adapter Stopped");
+        } catch (Exception e) {
+            Log.w(TAG,"Caught exception stopping Gimbal. ", e);
+        }
+    }
+
+    /**
+     * Check if the adapter is started or not.
+     */
+    public boolean isStarted() {
+        try {
+            return isAdapterStarted && Gimbal.isStarted();
+        } catch (Exception e) {
+            Log.w(TAG,"Unable to check Gimbal.isStarted().", e);
+            return false;
+        }
+    }
+
+    /**
+     * Set whether the adapter should create a CustomEvent upon Gimbal Place entry.
+     * */
+    public void setShouldTrackCustomEntryEvent(Boolean shouldTrackCustomEntryEvent) {
+        preferences.edit()
+                .putBoolean(TRACK_CUSTOM_ENTRY_PREFERENCE_KEY, shouldTrackCustomEntryEvent)
+                .apply();
+    }
+
+    /**
+     * Set whether the adapter should create a CustomEvent upon Gimbal Place exit.
+     * */
+    public void setShouldTrackCustomExitEvent(Boolean shouldTrackCustomExitEvent) {
+        preferences.edit()
+                .putBoolean(TRACK_CUSTOM_EXIT_PREFERENCE_KEY, shouldTrackCustomExitEvent)
+                .apply();
+    }
+
+    /**
+     * Set whether the adapter should create a CustomEvent upon Gimbal Place exit.
+     * */
+    public void setShouldTrackRegionEvent(Boolean shouldTrackRegionEvent) {
+        preferences.edit()
+                .putBoolean(TRACK_REGION_EVENT_PREFERENCE_KEY, shouldTrackRegionEvent)
+                .apply();
+    }
+
+    /**
+     * Adds an adapter listener.
+     *
+     * @param listener The listener.
+     */
+    public void addListener(@NonNull Listener listener) {
+        synchronized (listeners) {
+            listeners.add(listener);
+        }
+    }
+
+    /**
+     * Removes an adapter listener.
+     *
+     * @param listener The listener.
+     */
+    public void removeListener(@NonNull Listener listener) {
+        synchronized (listeners) {
+            listeners.remove(listener);
+        }
+    }
+
+    private void startAdapter(@NonNull String gimbalApiKey) {
+        if (isAdapterStarted) {
+            return;
+        }
+
+        preferences.edit()
+                .putString(API_KEY_PREFERENCE, gimbalApiKey)
+                .putBoolean(STARTED_PREFERENCE, true)
+                .apply();
+
+        try {
+            Gimbal.setApiKey((Application)context.getApplicationContext(), gimbalApiKey);
+            Gimbal.start();
+            PlaceManager.getInstance().addListener(placeEventListener);
+
+            Log.i(TAG, String.format("Gimbal Adapter started. Gimbal.isStarted: %b, Gimbal application instance identifier: %s",
+                    Gimbal.isStarted(), Gimbal.getApplicationInstanceIdentifier()));
+            isAdapterStarted = true;
+
+            UAirship.shared(this::onAirshipReady);
+        } catch (Exception e) {
+            isAdapterStarted = false;
+            Log.e(TAG,"Failed to start Gimbal.", e);
+        }
+    }
+
+
+    private void onAirshipReady(@NonNull UAirship airship) {
+        if (!isStarted() || !(UAirship.isFlying() || UAirship.isTakingOff())) {
+            Log.w(TAG, "onAirshipReady called when adapter or Airship is not actually ready");
+            return;
+        }
+
+        updateDeviceAttributes(airship);
+
+        airship.getChannel().addChannelListener(new AirshipChannelListener() {
+            @Override
+            public void onChannelCreated(@NonNull String channelId) {
+                updateDeviceAttributes(airship);
+            }
+
+            @Override
+            public void onChannelUpdated(@NonNull String channelId) {
+                updateDeviceAttributes(airship);
+            }
+        });
+
+        processCachedVisits();
+    }
+
+    /**
+     * Updates Gimbal and Urban Airship device attributes.
+     */
+    private void updateDeviceAttributes(@NonNull UAirship airship) {
+        DeviceAttributesManager deviceAttributesManager = DeviceAttributesManager.getInstance();
+        if (deviceAttributesManager == null) {
+            return;
+        }
+
+        String namedUserId = airship.getContact().getNamedUserId();
+        deviceAttributesManager.setDeviceAttribute(GIMBAL_UA_NAMED_USER_ID, namedUserId);
+
+        String channelId = airship.getChannel().getId();
+        deviceAttributesManager.setDeviceAttribute(GIMBAL_UA_CHANNEL_ID, channelId);
+
+        String gimbalInstanceId = Gimbal.getApplicationInstanceIdentifier();
+        if (gimbalInstanceId != null) {
+            airship.getAnalytics().editAssociatedIdentifiers()
+                    .addIdentifier(UA_GIMBAL_APPLICATION_INSTANCE_ID, gimbalInstanceId).apply();
+        }
+    }
+
+    private void processCachedVisits() {
+        synchronized (cachedVisits) {
+            for (CachedVisit cachedVisit : cachedVisits) {
+                createAirshipEvent(cachedVisit.visit, cachedVisit.regionEvent);
+            }
+            cachedVisits.clear();
+        }
+    }
+
+    /**
      * Listener for Gimbal place events. Creates an analytics event
      * corresponding to boundary event type, and Event type preference.
      */
@@ -133,39 +354,6 @@ public class AirshipAdapter {
         }
     };
 
-    /**
-     * Hidden to support the singleton pattern.
-     *
-     * @param context The application context.
-     */
-    AirshipAdapter(@NonNull Context context) {
-        this.context = context.getApplicationContext();
-        this.preferences = context.getSharedPreferences(PREFERENCE_NAME, Context.MODE_PRIVATE);
-    }
-
-    /**
-     * GimbalAdapter shared instance.
-     */
-    public synchronized static AirshipAdapter shared(@NonNull Context context) {
-        if (instance == null) {
-            instance = new AirshipAdapter(context.getApplicationContext());
-        }
-
-        return instance;
-    }
-
-    void processCachedVisits() {
-        synchronized (cachedVisits) {
-            for (CachedVisit cachedVisit : cachedVisits) {
-                createAirshipEvent(cachedVisit.visit, cachedVisit.regionEvent);
-            }
-            cachedVisits.clear();
-        }
-    }
-
-    private boolean isAirshipReady() {
-        return UAirship.isFlying() || UAirship.isTakingOff();
-    }
 
     private void createAirshipEvent(Visit visit, int regionEvent) {
         if (!isAirshipReady()) {
@@ -219,6 +407,10 @@ public class AirshipAdapter {
         }
     }
 
+    private boolean isAirshipReady() {
+        return UAirship.isFlying() || UAirship.isTakingOff();
+    }
+
     private RegionEvent createRegionEvent(Visit visit, int boundaryEvent) {
         return RegionEvent.newBuilder()
                 .setBoundaryEvent(boundaryEvent)
@@ -229,7 +421,8 @@ public class AirshipAdapter {
 
     private CustomEvent createCustomEvent(final String eventName, final Visit visit, final int boundaryEvent) {
         if (boundaryEvent == RegionEvent.BOUNDARY_EVENT_ENTER) {
-            return createCustomEventBuilder(eventName, visit, boundaryEvent).build();
+            return createCustomEventBuilder(eventName, visit, boundaryEvent)
+                    .build();
         } else {
             return createCustomEventBuilder(eventName, visit, boundaryEvent)
                     .addProperty("dwellTimeInSeconds", visit.getDwellTimeInMillis() / 1000)
@@ -253,196 +446,6 @@ public class AirshipAdapter {
                 .addProperty("placeName", visit.getPlace().getName())
                 .addProperty("source", SOURCE)
                 .addProperty("boundaryEvent", boundaryEvent);
-    }
-
-    /**
-     * Adds an adapter listener.
-     *
-     * @param listener The listener.
-     */
-    public void addListener(@NonNull Listener listener) {
-        synchronized (listeners) {
-            listeners.add(listener);
-        }
-    }
-
-    /**
-     * Removes an adapter listener.
-     *
-     * @param listener The listener.
-     */
-    public void removeListener(@NonNull Listener listener) {
-        synchronized (listeners) {
-            listeners.remove(listener);
-        }
-    }
-
-    /**
-     * Restores the last run state. If previously started it will start listening.
-     * This should be called early during app initialization in order to
-     * reliably process background location or beacon events. Called automatically by
-     * <code>AirshipAdapterInitializer</code> but may be called in `Application.onCreate()` if
-     * manual initialization is desired.
-     */
-    public void restore() {
-        String gimbalApiKey = preferences.getString(API_KEY_PREFERENCE, null);
-        boolean previouslyStarted = preferences.getBoolean(STARTED_PREFERENCE, false);
-        if (gimbalApiKey != null && previouslyStarted) {
-            Log.i(TAG, "Restoring Gimbal Adapter");
-            startAdapter(gimbalApiKey);
-            if (isStarted()) {
-                Log.i(TAG, "Gimbal adapter restored");
-            } else {
-                Log.e(TAG, "Failed to restore Gimbal adapter");
-            }
-        }
-    }
-
-    /**
-     * Starts the adapter.
-     * <p>
-     * b>Note:</b> The adapter will fail to listen for places if the application does not have proper
-     * permissions.
-     *
-     * @param gimbalApiKey The Gimbal API key.
-     * @return {@code true} if the adapter started, otherwise {@code false}.
-     */
-    public boolean start(@NonNull String gimbalApiKey) {
-        startAdapter(gimbalApiKey);
-        return isStarted();
-    }
-
-    private void startAdapter(@NonNull String gimbalApiKey) {
-        if (isAdapterStarted) {
-            return;
-        }
-
-        preferences.edit()
-                .putString(API_KEY_PREFERENCE, gimbalApiKey)
-                .putBoolean(STARTED_PREFERENCE, true)
-                .apply();
-
-        try {
-            Gimbal.setApiKey((Application)context.getApplicationContext(), gimbalApiKey);
-            Gimbal.start();
-            PlaceManager.getInstance().addListener(placeEventListener);
-
-            Log.i(TAG, String.format("Gimbal Adapter started. Gimbal.isStarted: %b, Gimbal application instance identifier: %s",
-                    Gimbal.isStarted(), Gimbal.getApplicationInstanceIdentifier()));
-            isAdapterStarted = true;
-
-            UAirship.shared(this::onAirshipReady);
-        } catch (Exception e) {
-            isAdapterStarted = false;
-            Log.e(TAG,"Failed to start Gimbal.", e);
-        }
-    }
-
-    /**
-     * Stops the adapter.
-     */
-    public void stop() {
-        if (!isStarted()) {
-            Log.w(TAG, "stop() called when adapter was not started");
-            return;
-        }
-
-        preferences.edit()
-                .putBoolean(STARTED_PREFERENCE, false)
-                .apply();
-
-        try {
-            Gimbal.stop();
-            PlaceManager.getInstance().removeListener(placeEventListener);
-            isAdapterStarted = false;
-            Log.i(TAG, "Adapter Stopped");
-        } catch (Exception e) {
-            Log.w(TAG,"Caught exception stopping Gimbal. ", e);
-        }
-    }
-
-    /**
-     * Check if the adapter is started or not.
-     */
-    public boolean isStarted() {
-        try {
-            return isAdapterStarted && Gimbal.isStarted();
-        } catch (Exception e) {
-            Log.w(TAG,"Unable to check Gimbal.isStarted().", e);
-            return false;
-        }
-    }
-
-    private void onAirshipReady(@NonNull UAirship airship) {
-        if (!isStarted() || !(UAirship.isFlying() || UAirship.isTakingOff())) {
-            Log.w(TAG, "onAirshipReady called when adapter or Airship is not actually ready");
-            return;
-        }
-
-        updateDeviceAttributes(airship);
-
-        airship.getChannel().addChannelListener(new AirshipChannelListener() {
-            @Override
-            public void onChannelCreated(@NonNull String channelId) {
-                updateDeviceAttributes(airship);
-            }
-
-            @Override
-            public void onChannelUpdated(@NonNull String channelId) {
-                updateDeviceAttributes(airship);
-            }
-        });
-
-        processCachedVisits();
-    }
-
-    /**
-     * Set whether the adapter should create a CustomEvent upon Gimbal Place entry.
-     * */
-    public void setShouldTrackCustomEntryEvent(Boolean shouldTrackCustomEntryEvent) {
-        preferences.edit()
-                .putBoolean(TRACK_CUSTOM_ENTRY_PREFERENCE_KEY, shouldTrackCustomEntryEvent)
-                .apply();
-    }
-
-    /**
-     * Set whether the adapter should create a CustomEvent upon Gimbal Place exit.
-     * */
-    public void setShouldTrackCustomExitEvent(Boolean shouldTrackCustomExitEvent) {
-        preferences.edit()
-                .putBoolean(TRACK_CUSTOM_EXIT_PREFERENCE_KEY, shouldTrackCustomExitEvent)
-                .apply();
-    }
-
-    /**
-     * Set whether the adapter should create a CustomEvent upon Gimbal Place exit.
-     * */
-    public void setShouldTrackRegionEvent(Boolean shouldTrackRegionEvent) {
-        preferences.edit()
-                .putBoolean(TRACK_REGION_EVENT_PREFERENCE_KEY, shouldTrackRegionEvent)
-                .apply();
-    }
-
-    /**
-     * Updates Gimbal and Urban Airship device attributes.
-     */
-    private void updateDeviceAttributes(@NonNull UAirship airship) {
-        DeviceAttributesManager deviceAttributesManager = DeviceAttributesManager.getInstance();
-        if (deviceAttributesManager == null) {
-            return;
-        }
-
-        String namedUserId = airship.getContact().getNamedUserId();
-        deviceAttributesManager.setDeviceAttribute(GIMBAL_UA_NAMED_USER_ID, namedUserId);
-
-        String channelId = airship.getChannel().getId();
-        deviceAttributesManager.setDeviceAttribute(GIMBAL_UA_CHANNEL_ID, channelId);
-
-        String gimbalInstanceId = Gimbal.getApplicationInstanceIdentifier();
-        if (gimbalInstanceId != null) {
-            airship.getAnalytics().editAssociatedIdentifiers()
-                    .addIdentifier(UA_GIMBAL_APPLICATION_INSTANCE_ID, gimbalInstanceId).apply();
-        }
     }
 
     private static class CachedVisit {
