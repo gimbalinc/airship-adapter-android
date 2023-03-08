@@ -53,7 +53,7 @@ class MainFragment : Fragment(R.layout.fragment_main) {
 
                     builder.setMessage("Are you sure you want to delete all notifications?")
                         .setTitle("Delete")
-                        .setPositiveButton("Yes") { dialog: DialogInterface, which: Int ->
+                        .setPositiveButton("Yes") { dialog: DialogInterface, _: Int ->
                             viewModel.onDeleteClick()
                             dialog.dismiss()
                         }
@@ -82,7 +82,7 @@ class MainFragment : Fragment(R.layout.fragment_main) {
         viewModel.onPermissionsGranted()
         viewModel.placeEvents.observe(viewLifecycleOwner) {
             it.map { placeEvent ->
-                Timber.d(placeEvent.place)
+                Timber.d(placeEvent.placeName)
             }
             adapter.updateItems(it)
         }
@@ -144,8 +144,8 @@ class MainFragment : Fragment(R.layout.fragment_main) {
     ) : RecyclerView.ViewHolder(binding.root) {
         internal fun bind(item: PlaceEventDomainModel) {
             binding.label.text = if (item.isArrival)
-                "Arrived at ${item.place} at ${item.time}"
-            else "Departed ${item.place} at ${item.time}"
+                "Arrived at ${item.placeName} at ${item.formattedTime}"
+            else "Departed ${item.placeName} at ${item.formattedTime}"
         }
     }
 }

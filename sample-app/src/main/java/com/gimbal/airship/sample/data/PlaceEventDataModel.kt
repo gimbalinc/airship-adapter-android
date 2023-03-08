@@ -7,7 +7,7 @@ import androidx.room.PrimaryKey
 data class PlaceEventDataModel(
     @PrimaryKey
     val id: String,
-    val place: String,
+    val placeName: String,
     val arrivalTimeInMillis: Long,
     val departureTimeInMillis: Long,
 )

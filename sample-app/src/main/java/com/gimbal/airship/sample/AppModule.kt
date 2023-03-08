@@ -62,9 +62,8 @@ object AppModule {
     @Singleton
     fun placeEventsRepository(
         appDatabase: AppDatabase,
-        airship: AirshipAdapter
     ): PlaceEventRepository {
-        return PlaceEventRepositoryImpl(airship, appDatabase.getPlaceEventDao())
+        return PlaceEventRepositoryImpl(appDatabase.getPlaceEventDao())
     }
 
     @Provides
