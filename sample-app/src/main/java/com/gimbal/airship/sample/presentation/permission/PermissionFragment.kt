@@ -22,9 +22,9 @@ class PermissionFragment : Fragment(R.layout.fragment_permission) {
     private val binding by viewBinding(FragmentPermissionBinding::bind)
     private lateinit var adapter: PageAdapter
     private val requestLocationPermissionLauncher = registerForActivityResult(
-        ActivityResultContracts.RequestPermission()
-    ) { isPermissionGranted ->
-        if (isPermissionGranted) {
+        ActivityResultContracts.RequestMultiplePermissions()
+    ) { permissionGrantMap: Map<String, Boolean> ->
+        if (permissionGrantMap.all { entry -> entry.value }) {
             binding.pager.setCurrentItem(binding.pager.currentItem + 1, true)
         } else {
             Timber.w("Permission denied")
@@ -64,7 +64,10 @@ class PermissionFragment : Fragment(R.layout.fragment_permission) {
         binding.pager.adapter = adapter
         binding.button.setOnClickListener {
             if (binding.pager.currentItem == 0) {
-                requestLocationPermissionLauncher.launch(Manifest.permission.ACCESS_FINE_LOCATION)
+                requestLocationPermissionLauncher.launch(arrayOf(
+                    Manifest.permission.ACCESS_COARSE_LOCATION,
+                    Manifest.permission.ACCESS_FINE_LOCATION
+                ))
             } else if (Build.VERSION.SDK_INT >= 33) {
                 requestNotificationPermissionLauncher.launch(Manifest.permission.POST_NOTIFICATIONS)
             }
