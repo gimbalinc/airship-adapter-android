@@ -7,14 +7,14 @@ import java.time.format.DateTimeFormatter
 data class PlaceEventDomainModel(
     val placeName: String,
     val isArrival: Boolean,
-    val time: Instant
+    val timestamp: Instant
 ) {
     val formattedTime: String
-        get() = formatter.format(time)
+        get() = formatter.format(timestamp)
 
     companion object {
         var formatter: DateTimeFormatter = DateTimeFormatter
-            .ofPattern("yyyy-MM-dd hh:mm:ss")
+            .ofPattern("MM/dd hh:mm:ss")
             .withZone(ZoneId.systemDefault())
     }
 }

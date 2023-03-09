@@ -11,7 +11,7 @@ interface PlaceEventDao {
     @Insert(onConflict = REPLACE)
     fun insertPlaceEvent(item: PlaceEventDataModel)
 
-    @Query("SELECT * FROM place_events ORDER BY id DESC")
+    @Query("SELECT * FROM place_events ORDER BY timestamp DESC")
     fun getPlaceEvents(): Flow<List<PlaceEventDataModel>>
 
     @Query("DELETE FROM place_events")

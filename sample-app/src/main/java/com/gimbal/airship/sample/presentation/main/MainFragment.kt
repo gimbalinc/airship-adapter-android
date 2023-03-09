@@ -143,9 +143,9 @@ class MainFragment : Fragment(R.layout.fragment_main) {
         private val binding: ItemPlaceEventBinding
     ) : RecyclerView.ViewHolder(binding.root) {
         internal fun bind(item: PlaceEventDomainModel) {
-            binding.label.text = if (item.isArrival)
-                "Arrived at ${item.placeName} at ${item.formattedTime}"
-            else "Departed ${item.placeName} at ${item.formattedTime}"
+            binding.label.text = binding.label.resources.getString(R.string.place_event_item,
+                item.formattedTime, if (item.isArrival) "ARRIVED" else "DEPARTED", item.placeName
+            )
         }
     }
 }
