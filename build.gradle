@@ -2,7 +2,7 @@
 
 buildscript {
     ext {
-        adapterVersion = '1.0.0'
+        adapterVersion = '2.0.0-SNAPSHOT'
 
         // Dependencies
         airshipVersion = '16.9.0'

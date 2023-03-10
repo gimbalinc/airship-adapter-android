@@ -10,6 +10,7 @@ import android.content.SharedPreferences;
 import android.util.Log;
 
 import androidx.annotation.NonNull;
+import androidx.annotation.Nullable;
 
 import com.gimbal.android.Attributes;
 import com.gimbal.android.DeviceAttributesManager;
@@ -26,6 +27,7 @@ import com.urbanairship.util.DateUtils;
 import java.util.LinkedList;
 import java.util.List;
 import java.util.concurrent.CopyOnWriteArrayList;
+import java.util.concurrent.atomic.AtomicReference;
 
 /**
  * GimbalAdapter interfaces Gimbal SDK functionality with Urban Airship services.
@@ -59,6 +61,7 @@ public class AirshipAdapter {
     private final List<Listener> listeners = new CopyOnWriteArrayList<>();
     private boolean isAdapterStarted = false;
     private final LinkedList<CachedVisit> cachedVisits = new LinkedList<>();
+    private final AtomicReference<AirshipChannelListener> airshipChannelListener = new AtomicReference<>();
 
     /**
      * Adapter listener.
@@ -127,21 +130,26 @@ public class AirshipAdapter {
      * manual initialization is desired.
      */
     public void restore() {
-        String gimbalApiKey = preferences.getString(API_KEY_PREFERENCE, null);
-        boolean previouslyStarted = preferences.getBoolean(STARTED_PREFERENCE, false);
-        if (gimbalApiKey != null && previouslyStarted) {
-            Log.i(TAG, "Restoring Gimbal Adapter");
-            startAdapter(gimbalApiKey);
-            if (isStarted()) {
-                Log.i(TAG, "Gimbal adapter restored");
+        String apiKeyPreference = getApiKeyPreference();
+        boolean previouslyStarted = getStartedPreference();
+
+        if (apiKeyPreference != null && previouslyStarted) {
+            Log.i(TAG, "Restoring Gimbal-Airship Adapter");
+            startAdapter(apiKeyPreference);
+            if (isAdapterStarted) {
+                Log.i(TAG, "Gimbal Airship adapter restored");
             } else {
-                Log.e(TAG, "Failed to restore Gimbal adapter");
+                Log.e(TAG, "Failed to restore Gimbal Airship adapter");
             }
+        } else if (!previouslyStarted) {
+            Log.d(TAG, "Gimbal Airship adapter not previously started, nothing to restore");
         }
     }
 
     /**
-     * Starts the adapter.
+     * Starts the adapter.  If the adapter is already started with the same API key, no action
+     * is taken.  If a new API key is supplied, the adapter will be stopped and restarted with
+     * the new key.
      * <p>
      * b>Note:</b> The adapter will fail to listen for places if the application does not have proper
      * permissions.
@@ -150,27 +158,47 @@ public class AirshipAdapter {
      * @return {@code true} if the adapter started, otherwise {@code false}.
      */
     public boolean start(@NonNull String gimbalApiKey) {
-        startAdapter(gimbalApiKey);
-        return isStarted();
+        if (gimbalApiKey.trim().isEmpty()) {
+            Log.w(TAG, "Attempted to start Gimbal with empty API key");
+            return isAdapterStarted;
+        }
+
+        String apiKeyPreference = getApiKeyPreference();
+        if (isAdapterStarted && !gimbalApiKey.equals(apiKeyPreference)) {
+            Log.w(TAG, String.format("Detected API key change '%s' -> '%s...'",
+                    apiKeyPreference == null ? "<null>" : apiKeyPreference.substring(0, 8) + "...",
+                    gimbalApiKey.substring(0, 8)));
+            setApiKeyPreference(gimbalApiKey);
+            Gimbal.setApiKey((Application)context.getApplicationContext(), gimbalApiKey);
+            Log.w(TAG, "Gimbal will use new API key upon next app start");
+        } else {
+            startAdapter(gimbalApiKey);
+        }
+        return isAdapterStarted;
     }
 
     /**
      * Stops the adapter.
      */
     public void stop() {
-        if (!isStarted()) {
+        if (!isAdapterStarted) {
             Log.w(TAG, "stop() called when adapter was not started");
             return;
         }
 
-        preferences.edit()
-                .putBoolean(STARTED_PREFERENCE, false)
-                .apply();
-
         try {
+            setStartedPreference(false);
             Gimbal.stop();
-            PlaceManager.getInstance().removeListener(placeEventListener);
             isAdapterStarted = false;
+            PlaceManager.getInstance().removeListener(placeEventListener);
+            UAirship.shared(airship -> {
+                synchronized(airshipChannelListener) {
+                    if (airshipChannelListener.get() != null) {
+                        airship.getChannel().removeChannelListener(
+                                airshipChannelListener.getAndSet(null));
+                   }
+                }
+            });
             Log.i(TAG, "Adapter Stopped");
         } catch (Exception e) {
             Log.w(TAG,"Caught exception stopping Gimbal. ", e);
@@ -181,12 +209,7 @@ public class AirshipAdapter {
      * Check if the adapter is started or not.
      */
     public boolean isStarted() {
-        try {
-            return isAdapterStarted && Gimbal.isStarted();
-        } catch (Exception e) {
-            Log.w(TAG,"Unable to check Gimbal.isStarted().", e);
-            return false;
-        }
+        return isAdapterStarted;
     }
 
     /**
@@ -243,47 +266,66 @@ public class AirshipAdapter {
             return;
         }
 
-        preferences.edit()
-                .putString(API_KEY_PREFERENCE, gimbalApiKey)
-                .putBoolean(STARTED_PREFERENCE, true)
-                .apply();
-
         try {
+            setStartedPreference(true);
+            setApiKeyPreference(gimbalApiKey);
             Gimbal.setApiKey((Application)context.getApplicationContext(), gimbalApiKey);
             Gimbal.start();
+            isAdapterStarted = Gimbal.isStarted();
             PlaceManager.getInstance().addListener(placeEventListener);
+            UAirship.shared(this::onAirshipReady);
 
             Log.i(TAG, String.format("Gimbal Adapter started. Gimbal.isStarted: %b, Gimbal application instance identifier: %s",
                     Gimbal.isStarted(), Gimbal.getApplicationInstanceIdentifier()));
-            isAdapterStarted = true;
-
-            UAirship.shared(this::onAirshipReady);
         } catch (Exception e) {
             isAdapterStarted = false;
             Log.e(TAG,"Failed to start Gimbal.", e);
         }
     }
 
+    @Nullable
+    private String getApiKeyPreference() {
+        return preferences.getString(API_KEY_PREFERENCE, null);
+    }
 
-    private void onAirshipReady(@NonNull UAirship airship) {
-        if (!isStarted() || !(UAirship.isFlying() || UAirship.isTakingOff())) {
+    private void setApiKeyPreference(@NonNull String gimbalApiKey) {
+        preferences.edit()
+                .putString(API_KEY_PREFERENCE, gimbalApiKey)
+                .apply();
+    }
+
+    private boolean getStartedPreference() {
+        return preferences.getBoolean(STARTED_PREFERENCE, false);
+    }
+
+    private void setStartedPreference(boolean started) {
+        preferences.edit()
+                .putBoolean(STARTED_PREFERENCE, started)
+                .apply();
+    }
+
+    private synchronized void onAirshipReady(@NonNull UAirship airship) {
+        if (!isAdapterStarted || !(UAirship.isFlying() || UAirship.isTakingOff())) {
             Log.w(TAG, "onAirshipReady called when adapter or Airship is not actually ready");
             return;
         }
 
         updateDeviceAttributes(airship);
 
-        airship.getChannel().addChannelListener(new AirshipChannelListener() {
-            @Override
-            public void onChannelCreated(@NonNull String channelId) {
-                updateDeviceAttributes(airship);
-            }
+        synchronized (airshipChannelListener) {
+            airshipChannelListener.set(new AirshipChannelListener() {
+                @Override
+                public void onChannelCreated(@NonNull String channelId) {
+                    updateDeviceAttributes(airship);
+                }
 
-            @Override
-            public void onChannelUpdated(@NonNull String channelId) {
-                updateDeviceAttributes(airship);
-            }
-        });
+                @Override
+                public void onChannelUpdated(@NonNull String channelId) {
+                    updateDeviceAttributes(airship);
+                }
+            });
+            airship.getChannel().addChannelListener(airshipChannelListener.get());
+        }
 
         processCachedVisits();
     }
@@ -361,47 +403,48 @@ public class AirshipAdapter {
             return;
         }
         UAirship airship = UAirship.shared();
+        synchronized (listeners) {
+            if (regionEvent == RegionEvent.BOUNDARY_EVENT_ENTER) {
+                if (preferences.getBoolean(TRACK_REGION_EVENT_PREFERENCE_KEY, false)) {
+                    RegionEvent event = createRegionEvent(visit, RegionEvent.BOUNDARY_EVENT_ENTER);
 
-        if (regionEvent == RegionEvent.BOUNDARY_EVENT_ENTER) {
-            if (preferences.getBoolean(TRACK_REGION_EVENT_PREFERENCE_KEY, false)) {
-                RegionEvent event = createRegionEvent(visit, RegionEvent.BOUNDARY_EVENT_ENTER);
+                    airship.getAnalytics().addEvent(event);
 
-                airship.getAnalytics().addEvent(event);
+                    for (Listener listener : listeners) {
+                        listener.onRegionEntered(event, visit);
+                    }
+                }
 
-                for (Listener listener : listeners) {
-                    listener.onRegionEntered(event, visit);
+                if (preferences.getBoolean(TRACK_CUSTOM_ENTRY_PREFERENCE_KEY, false)) {
+                    CustomEvent event = createCustomEvent(CUSTOM_ENTRY_EVENT_NAME, visit, RegionEvent.BOUNDARY_EVENT_ENTER);
+
+                    airship.getAnalytics().addEvent(event);
+
+                    for (Listener listener : listeners) {
+                        listener.onCustomRegionEntry(event, visit);
+                    }
                 }
             }
 
-            if (preferences.getBoolean(TRACK_CUSTOM_ENTRY_PREFERENCE_KEY, false)) {
-                CustomEvent event = createCustomEvent(CUSTOM_ENTRY_EVENT_NAME, visit, RegionEvent.BOUNDARY_EVENT_ENTER);
+            if (regionEvent == RegionEvent.BOUNDARY_EVENT_EXIT) {
+                if (preferences.getBoolean(TRACK_REGION_EVENT_PREFERENCE_KEY, false)) {
+                    RegionEvent event = createRegionEvent(visit, RegionEvent.BOUNDARY_EVENT_EXIT);
 
-                airship.getAnalytics().addEvent(event);
+                    airship.getAnalytics().addEvent(event);
 
-                for (Listener listener : listeners) {
-                    listener.onCustomRegionEntry(event, visit);
+                    for (Listener listener : listeners) {
+                        listener.onRegionExited(event, visit);
+                    }
                 }
-            }
-        }
 
-        if (regionEvent == RegionEvent.BOUNDARY_EVENT_EXIT) {
-            if (preferences.getBoolean(TRACK_REGION_EVENT_PREFERENCE_KEY, false)) {
-                RegionEvent event = createRegionEvent(visit, RegionEvent.BOUNDARY_EVENT_EXIT);
+                if (preferences.getBoolean(TRACK_CUSTOM_EXIT_PREFERENCE_KEY, false)) {
+                    CustomEvent event = createCustomEvent(CUSTOM_EXIT_EVENT_NAME, visit, RegionEvent.BOUNDARY_EVENT_EXIT);
 
-                airship.getAnalytics().addEvent(event);
+                    airship.getAnalytics().addEvent(event);
 
-                for (Listener listener : listeners) {
-                    listener.onRegionExited(event, visit);
-                }
-            }
-
-            if (preferences.getBoolean(TRACK_CUSTOM_EXIT_PREFERENCE_KEY, false)) {
-                CustomEvent event = createCustomEvent(CUSTOM_EXIT_EVENT_NAME, visit, RegionEvent.BOUNDARY_EVENT_EXIT);
-
-                airship.getAnalytics().addEvent(event);
-
-                for (Listener listener : listeners) {
-                    listener.onCustomRegionExit(event, visit);
+                    for (Listener listener : listeners) {
+                        listener.onCustomRegionExit(event, visit);
+                    }
                 }
             }
         }

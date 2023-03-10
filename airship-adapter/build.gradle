@@ -4,8 +4,8 @@ plugins {
     id 'signing'
 }
 
-group = 'com.gimbal.android.v4'
-description = "Gimbal Airship Adapter"
+group = 'com.gimbal.android'
+description = "Gimbal Airship Adapter - Android"
 version = rootProject.adapterVersion
 
 android {
@@ -25,7 +25,7 @@ android {
 dependencies {
     api "com.gimbal.android.v4:gimbal-sdk:${rootProject.gimbalVersion}"
     implementation "com.gimbal.android.v4:gimbal-slf4j-impl:${rootProject.gimbalVersion}"
-    api "com.urbanairship.android:urbanairship-core:${rootProject.airshipVersion}"
+    compileOnly "com.urbanairship.android:urbanairship-core:${rootProject.airshipVersion}"
 
     implementation "androidx.startup:startup-runtime:1.1.1"
 }
