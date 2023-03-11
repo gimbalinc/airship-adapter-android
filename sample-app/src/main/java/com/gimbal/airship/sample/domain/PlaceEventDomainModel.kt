@@ -14,7 +14,7 @@ data class PlaceEventDomainModel(
 
     companion object {
         var formatter: DateTimeFormatter = DateTimeFormatter
-            .ofPattern("MM/dd hh:mm:ss")
+            .ofPattern("MM/dd HH:mm:ss")
             .withZone(ZoneId.systemDefault())
     }
 }
