@@ -6,12 +6,8 @@ import android.content.DialogInterface
 import android.content.pm.PackageManager
 import android.os.Build
 import android.os.Bundle
-import android.view.LayoutInflater
-import android.view.Menu
-import android.view.MenuInflater
-import android.view.MenuItem
-import android.view.View
-import android.view.ViewGroup
+import android.util.Log
+import android.view.*
 import androidx.appcompat.app.AlertDialog
 import androidx.core.content.ContextCompat
 import androidx.core.view.MenuHost
@@ -68,7 +64,7 @@ class MainFragment : Fragment(R.layout.fragment_main) {
             }
         }, viewLifecycleOwner, Lifecycle.State.RESUMED)
 
-        if (!checkPermissions()) {
+        if (!hasRequiredPermissions()) {
             findNavController().navigate(MainFragmentDirections.actionMainFragmentToPermissionFragment())
             return
         }
@@ -76,10 +72,12 @@ class MainFragment : Fragment(R.layout.fragment_main) {
         val adapter = PlaceEventAdapter(listOf())
         binding.recycleView.adapter = adapter
 
-        viewModel.onPermissionsGranted()
         viewModel.placeEvents.observe(viewLifecycleOwner) {
+            Timber.d("Refreshing transcript")
             it.map { placeEvent ->
-                Timber.d(placeEvent.placeName)
+                Timber.d(placeEvent.formattedTime + " " +
+                        (if (placeEvent.isArrival) "ARRIVED  " else "DEPARTED ") +
+                        placeEvent.placeName)
             }
             adapter.updateItems(it)
         }
@@ -90,7 +88,7 @@ class MainFragment : Fragment(R.layout.fragment_main) {
      *
      * @return true if the user has given all permissions, false otherwise.
      */
-    private fun checkPermissions(): Boolean {
+    private fun hasRequiredPermissions(): Boolean {
         val hasFineLocationPermissions = ContextCompat.checkSelfPermission(
             requireContext(),
             Manifest.permission.ACCESS_FINE_LOCATION
@@ -108,7 +106,10 @@ class MainFragment : Fragment(R.layout.fragment_main) {
             ) == PackageManager.PERMISSION_GRANTED
         } else true
 
-        return hasFineLocationPermissions && hasCoarseLocationPermissions && hasNotificationPermissions
+        if (hasCoarseLocationPermissions && !hasFineLocationPermissions) {
+            Timber.w("Gimbal SDK will only detect large, region-sized places without ACCESS_FINE_LOCATION")
+        }
+        return hasCoarseLocationPermissions && hasNotificationPermissions
     }
 
     class PlaceEventAdapter(

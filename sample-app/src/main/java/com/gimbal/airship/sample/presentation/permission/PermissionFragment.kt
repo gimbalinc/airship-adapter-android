@@ -10,32 +10,48 @@ import android.view.ViewGroup
 import androidx.activity.result.contract.ActivityResultContracts
 import androidx.core.content.ContextCompat
 import androidx.fragment.app.Fragment
+import androidx.fragment.app.viewModels
 import androidx.navigation.fragment.findNavController
 import androidx.recyclerview.widget.RecyclerView
 import com.gimbal.airship.sample.R
 import com.gimbal.airship.sample.databinding.FragmentPermissionBinding
 import com.gimbal.airship.sample.databinding.FragmentPermissionPageBinding
 import com.gimbal.airship.sample.viewBinding
+import com.urbanairship.Predicate
+import dagger.hilt.android.AndroidEntryPoint
 import timber.log.Timber
 
+@AndroidEntryPoint
 class PermissionFragment : Fragment(R.layout.fragment_permission) {
+    private val viewModel: PermissionViewModel by viewModels()
     private val binding by viewBinding(FragmentPermissionBinding::bind)
     private lateinit var adapter: PageAdapter
+
     private val requestLocationPermissionLauncher = registerForActivityResult(
         ActivityResultContracts.RequestMultiplePermissions()
     ) { permissionGrantMap: Map<String, Boolean> ->
-        if (permissionGrantMap.all { entry -> entry.value }) {
-            binding.pager.setCurrentItem(binding.pager.currentItem + 1, true)
-        } else {
-            Timber.w("Permission denied")
+        advanceCompleteOrFail(permissionGrantMap) {
+            it.all { entry -> entry.value }
         }
     }
 
     private val requestNotificationPermissionLauncher = registerForActivityResult(
         ActivityResultContracts.RequestPermission()
     ) { isPermissionGranted ->
-        if (isPermissionGranted) {
-            findNavController().popBackStack()
+        advanceCompleteOrFail(isPermissionGranted) {
+            it
+        }
+    }
+
+    private fun <T> advanceCompleteOrFail(obj: T, permissionGrantedPredicate: Predicate<T>) {
+        if (permissionGrantedPredicate.apply(obj)) {
+            if (binding.pager.currentItem < adapter.itemCount - 1) {
+                binding.pager.setCurrentItem(binding.pager.currentItem + 1, true)
+            } else {
+                Timber.w("Permission(s) granted")
+                viewModel.onPermissionsGranted()
+                findNavController().popBackStack()
+            }
         } else {
             Timber.w("Permission denied")
         }
