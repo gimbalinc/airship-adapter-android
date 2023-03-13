@@ -73,9 +73,6 @@ class MainFragment : Fragment(R.layout.fragment_main) {
             return
         }
 
-        UAirship.takeOff(requireActivity().application)
-//        UAirship.shared().pushManager.userNotificationsEnabled = true
-
         val adapter = PlaceEventAdapter(listOf())
         binding.recycleView.adapter = adapter
 
