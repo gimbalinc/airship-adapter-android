@@ -6,8 +6,8 @@ import android.content.DialogInterface
 import android.content.pm.PackageManager
 import android.os.Build
 import android.os.Bundle
-import android.util.Log
 import android.view.*
+import androidx.activity.result.contract.ActivityResultContracts
 import androidx.appcompat.app.AlertDialog
 import androidx.core.content.ContextCompat
 import androidx.core.view.MenuHost
@@ -22,7 +22,6 @@ import com.gimbal.airship.sample.databinding.FragmentMainBinding
 import com.gimbal.airship.sample.databinding.ItemPlaceEventBinding
 import com.gimbal.airship.sample.domain.PlaceEventDomainModel
 import com.gimbal.airship.sample.viewBinding
-import com.urbanairship.UAirship
 import dagger.hilt.android.AndroidEntryPoint
 import timber.log.Timber
 
@@ -34,7 +33,7 @@ class MainFragment : Fragment(R.layout.fragment_main) {
     override fun onViewCreated(view: View, savedInstanceState: Bundle?) {
         super.onViewCreated(view, savedInstanceState)
 
-        val menuHost: MenuHost = requireActivity() as MenuHost
+        val menuHost: MenuHost = requireActivity()
         menuHost.addMenuProvider(object : MenuProvider {
             override fun onCreateMenu(menu: Menu, menuInflater: MenuInflater) {
                 // Add menu items here
@@ -64,9 +63,11 @@ class MainFragment : Fragment(R.layout.fragment_main) {
             }
         }, viewLifecycleOwner, Lifecycle.State.RESUMED)
 
-        if (!hasRequiredPermissions()) {
-            findNavController().navigate(MainFragmentDirections.actionMainFragmentToPermissionFragment())
-            return
+        val permissionsToRequestWithoutRationale = permissionsToRequest(false)
+        if (permissionsToRequestWithoutRationale.isNotEmpty()) {
+            requestPermissionsLauncher.launch(permissionsToRequestWithoutRationale.toTypedArray())
+        } else {
+            requestPermissionsWithRationale()
         }
 
         val adapter = PlaceEventAdapter(listOf())
@@ -83,33 +84,48 @@ class MainFragment : Fragment(R.layout.fragment_main) {
         }
     }
 
-    /**
-     * Checks if the user has given the required permissions
-     *
-     * @return true if the user has given all permissions, false otherwise.
-     */
-    private fun hasRequiredPermissions(): Boolean {
-        val hasFineLocationPermissions = ContextCompat.checkSelfPermission(
-            requireContext(),
-            Manifest.permission.ACCESS_FINE_LOCATION
-        ) == PackageManager.PERMISSION_GRANTED
+    @SuppressLint("InlinedApi")
+    private fun permissionsToRequest(shouldProvideRationale: Boolean): List<String> {
+        val desiredPermissions: List<Pair<String, Int?>> = listOf(
+            Pair(Manifest.permission.ACCESS_FINE_LOCATION, null),
+            Pair(Manifest.permission.BLUETOOTH_SCAN, 31),
+            Pair(Manifest.permission.POST_NOTIFICATIONS, 33)
+        )
 
-        val hasCoarseLocationPermissions = ContextCompat.checkSelfPermission(
-            requireContext(),
-            Manifest.permission.ACCESS_COARSE_LOCATION
-        ) == PackageManager.PERMISSION_GRANTED
-
-        val hasNotificationPermissions = if (Build.VERSION.SDK_INT >= 33) {
-            ContextCompat.checkSelfPermission(
-                requireContext(),
-                Manifest.permission.POST_NOTIFICATIONS
-            ) == PackageManager.PERMISSION_GRANTED
-        } else true
-
-        if (hasCoarseLocationPermissions && !hasFineLocationPermissions) {
-            Timber.w("Gimbal SDK will only detect large, region-sized places without ACCESS_FINE_LOCATION")
+        return desiredPermissions.filter { permission ->
+            if (!hasPermission(permission.first, permission.second)) {
+                shouldShowRequestPermissionRationale(permission.first) == shouldProvideRationale
+            } else false
+        }.map {
+            it.first
         }
-        return hasCoarseLocationPermissions && hasNotificationPermissions
+    }
+
+    private fun hasPermission(permission: String, minApi: Int? = null): Boolean {
+        return if (minApi == null || Build.VERSION.SDK_INT >= minApi) {
+            ContextCompat.checkSelfPermission(requireContext(), permission) ==
+                    PackageManager.PERMISSION_GRANTED
+        } else true
+    }
+
+    private val requestPermissionsLauncher = registerForActivityResult(
+        ActivityResultContracts.RequestMultiplePermissions()) {
+            permissionGrantMap: Map<String, Boolean> ->
+                if (permissionGrantMap.all { requestResult -> requestResult.value }) {
+                    viewModel.permissionsGranted()
+                } else {
+                    requestPermissionsWithRationale()
+                }
+        }
+
+    private fun requestPermissionsWithRationale() {
+        val permissionsWithRationale = permissionsToRequest(true)
+        if (permissionsWithRationale.isNotEmpty()) {
+            findNavController()
+                .navigate(MainFragmentDirections.actionMainFragmentToPermissionFragment(
+                    permissionsWithRationale.toTypedArray()
+                ))
+        }
     }
 
     class PlaceEventAdapter(

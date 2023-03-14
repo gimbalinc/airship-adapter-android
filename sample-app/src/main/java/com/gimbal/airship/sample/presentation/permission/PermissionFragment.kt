@@ -1,23 +1,21 @@
 package com.gimbal.airship.sample.presentation.permission
 
-import android.Manifest
-import android.content.pm.PackageManager
-import android.os.Build
+import android.Manifest.permission.*
+import android.annotation.SuppressLint
 import android.os.Bundle
 import android.view.LayoutInflater
 import android.view.View
 import android.view.ViewGroup
 import androidx.activity.result.contract.ActivityResultContracts
-import androidx.core.content.ContextCompat
 import androidx.fragment.app.Fragment
 import androidx.fragment.app.viewModels
 import androidx.navigation.fragment.findNavController
+import androidx.navigation.fragment.navArgs
 import androidx.recyclerview.widget.RecyclerView
 import com.gimbal.airship.sample.R
 import com.gimbal.airship.sample.databinding.FragmentPermissionBinding
 import com.gimbal.airship.sample.databinding.FragmentPermissionPageBinding
 import com.gimbal.airship.sample.viewBinding
-import com.urbanairship.Predicate
 import dagger.hilt.android.AndroidEntryPoint
 import timber.log.Timber
 
@@ -26,97 +24,70 @@ class PermissionFragment : Fragment(R.layout.fragment_permission) {
     private val viewModel: PermissionViewModel by viewModels()
     private val binding by viewBinding(FragmentPermissionBinding::bind)
     private lateinit var adapter: PageAdapter
+    private val args: PermissionFragmentArgs by navArgs()
 
-    private val requestLocationPermissionLauncher = registerForActivityResult(
-        ActivityResultContracts.RequestMultiplePermissions()
-    ) { permissionGrantMap: Map<String, Boolean> ->
-        advanceCompleteOrFail(permissionGrantMap) {
-            it.all { entry -> entry.value }
-        }
-    }
-
-    private val requestNotificationPermissionLauncher = registerForActivityResult(
-        ActivityResultContracts.RequestPermission()
-    ) { isPermissionGranted ->
-        advanceCompleteOrFail(isPermissionGranted) {
-            it
-        }
-    }
-
-    private fun <T> advanceCompleteOrFail(obj: T, permissionGrantedPredicate: Predicate<T>) {
-        if (permissionGrantedPredicate.apply(obj)) {
-            if (binding.pager.currentItem < adapter.itemCount - 1) {
-                binding.pager.setCurrentItem(binding.pager.currentItem + 1, true)
-            } else {
-                Timber.w("Permission(s) granted")
-                viewModel.onPermissionsGranted()
-                findNavController().popBackStack()
-            }
-        } else {
-            Timber.w("Permission denied")
-        }
-    }
-
+    @SuppressLint("InlinedApi")
     override fun onViewCreated(view: View, savedInstanceState: Bundle?) {
         super.onViewCreated(view, savedInstanceState)
 
         val pages = mutableListOf<PageAdapter.Page>()
-
-        pages.add(
-            PageAdapter.Page(
-                getString(R.string.location_permission_title),
-                getString(R.string.location_permission_body)
-            )
-        )
-        if (!checkNotificationPermission()) {
-            pages.add(
-                PageAdapter.Page(
-                    getString(R.string.notification_permission_title),
-                    getString(R.string.notification_permission_body)
+        for (permission in args.permissionsToRequest) {
+            when(permission) {
+                ACCESS_FINE_LOCATION -> pages.add(
+                    PageAdapter.Page(
+                        getString(R.string.location_permission_title),
+                        getString(R.string.location_permission_body),
+                        listOf(ACCESS_COARSE_LOCATION, ACCESS_FINE_LOCATION)
+                    )
                 )
-            )
+                BLUETOOTH_SCAN -> pages.add(
+                    PageAdapter.Page(
+                        getString(R.string.bluetooth_permission_title),
+                        getString(R.string.bluetooth_permission_body),
+                        listOf(BLUETOOTH_SCAN)
+                    )
+                )
+                POST_NOTIFICATIONS -> pages.add(
+                    PageAdapter.Page(
+                        getString(R.string.notification_permission_title),
+                        getString(R.string.notification_permission_body),
+                        listOf(POST_NOTIFICATIONS)
+                    )
+                )
+            }
         }
+
         adapter = PageAdapter(pages)
         binding.pager.adapter = adapter
         binding.button.setOnClickListener {
-            if (binding.pager.currentItem == 0) {
-                requestLocationPermissionLauncher.launch(arrayOf(
-                    Manifest.permission.ACCESS_COARSE_LOCATION,
-                    Manifest.permission.ACCESS_FINE_LOCATION
-                ))
-            } else if (Build.VERSION.SDK_INT >= 33) {
-                requestNotificationPermissionLauncher.launch(Manifest.permission.POST_NOTIFICATIONS)
-            }
+            val page = pages[binding.pager.currentItem]
+            requestMultiplePermissionLauncher.launch(page.requiredPermissions.toTypedArray())
         }
     }
 
-    private fun checkLocationPermission(): Boolean {
-        val hasFineLocationPermissions = ContextCompat.checkSelfPermission(
-            requireContext(),
-            Manifest.permission.ACCESS_FINE_LOCATION
-        ) == PackageManager.PERMISSION_GRANTED
+    private val requestMultiplePermissionLauncher =
+        registerForActivityResult(ActivityResultContracts.RequestMultiplePermissions()) {
+                permissionGrantMap: Map<String, Boolean> ->
 
-        val hasCoarseLocationPermissions = ContextCompat.checkSelfPermission(
-            requireContext(),
-            Manifest.permission.ACCESS_COARSE_LOCATION
-        ) == PackageManager.PERMISSION_GRANTED
+            if (!permissionGrantMap.all { grant -> grant.value }) {
+                var warning = "Permission denied:"
+                permissionGrantMap.forEach {grant -> warning += " ${grant.key}" }
+                Timber.w(warning)
+            }
 
-        return hasFineLocationPermissions && hasCoarseLocationPermissions
-    }
-
-    private fun checkNotificationPermission(): Boolean {
-        return if (Build.VERSION.SDK_INT >= 33) {
-            ContextCompat.checkSelfPermission(
-                requireContext(),
-                Manifest.permission.POST_NOTIFICATIONS
-            ) == PackageManager.PERMISSION_GRANTED
-        } else true
-    }
+            if (binding.pager.currentItem == adapter.itemCount - 1) {
+                viewModel.onRequestsComplete()
+                findNavController().popBackStack()
+            } else {
+                binding.pager.setCurrentItem(binding.pager.currentItem + 1, true)
+            }
+        }
 
     class PageAdapter(private val pages: List<Page>) : RecyclerView.Adapter<PageViewHolder>() {
         data class Page(
             val title: String,
-            val body: String
+            val body: String,
+            val requiredPermissions: List<String>
         )
 
         override fun onCreateViewHolder(parent: ViewGroup, viewType: Int): PageViewHolder {

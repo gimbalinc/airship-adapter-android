@@ -4,6 +4,7 @@ import android.content.Context
 import androidx.room.Room
 import com.gimbal.airship.AirshipAdapter
 import com.gimbal.airship.sample.data.PlaceEventRepositoryImpl
+import com.gimbal.airship.sample.domain.GimbalIntegration
 import com.gimbal.airship.sample.domain.PlaceEventRepository
 import dagger.Module
 import dagger.Provides
@@ -70,4 +71,12 @@ object AppModule {
     fun provideAirshipAdapter(
         @ApplicationContext context: Context
     ): AirshipAdapter = AirshipAdapter.shared(context)
+
+    @Provides
+    @Singleton
+    fun provideGimbalIntegration(
+        airshipAdapter: AirshipAdapter
+    ): GimbalIntegration {
+        return GimbalIntegration(airshipAdapter)
+    }
 }
