@@ -33,7 +33,7 @@ class MainFragment : Fragment(R.layout.fragment_main) {
     override fun onViewCreated(view: View, savedInstanceState: Bundle?) {
         super.onViewCreated(view, savedInstanceState)
 
-        val menuHost: MenuHost = requireActivity()
+        val menuHost: MenuHost = requireActivity() as MenuHost
         menuHost.addMenuProvider(object : MenuProvider {
             override fun onCreateMenu(menu: Menu, menuInflater: MenuInflater) {
                 // Add menu items here
@@ -87,7 +87,9 @@ class MainFragment : Fragment(R.layout.fragment_main) {
     @SuppressLint("InlinedApi")
     private fun permissionsToRequest(shouldProvideRationale: Boolean): List<String> {
         val desiredPermissions: List<Pair<String, Int?>> = listOf(
+            Pair(Manifest.permission.ACCESS_COARSE_LOCATION, null),
             Pair(Manifest.permission.ACCESS_FINE_LOCATION, null),
+            Pair(Manifest.permission.ACCESS_BACKGROUND_LOCATION, 29),
             Pair(Manifest.permission.BLUETOOTH_SCAN, 31),
             Pair(Manifest.permission.POST_NOTIFICATIONS, 33)
         )
@@ -110,15 +112,18 @@ class MainFragment : Fragment(R.layout.fragment_main) {
 
     private val requestPermissionsLauncher = registerForActivityResult(
         ActivityResultContracts.RequestMultiplePermissions()) {
-            permissionGrantMap: Map<String, Boolean> ->
-                if (permissionGrantMap.all { requestResult -> requestResult.value }) {
-                    viewModel.permissionsGranted()
-                } else {
-                    requestPermissionsWithRationale()
-                }
+            // Turns out we don't actually care if any or all of the permissions in the callback
+            // list were granted, because BACKGROUND will never be granted on the first request.
+            // So we always check for permissions that should show a rationale.
+            // If none of them need rationale (perhaps on an older device, there's no BACKGROUND)
+            // then call `permissionsGranted` which starts up Gimbal.
+            // Otherwise at the end of the with-rationale requests, Gimbal is started
+            if (requestPermissionsWithRationale() == 0) {
+                viewModel.permissionsGranted()
+            }
         }
 
-    private fun requestPermissionsWithRationale() {
+    private fun requestPermissionsWithRationale(): Int {
         val permissionsWithRationale = permissionsToRequest(true)
         if (permissionsWithRationale.isNotEmpty()) {
             findNavController()
@@ -126,6 +131,7 @@ class MainFragment : Fragment(R.layout.fragment_main) {
                     permissionsWithRationale.toTypedArray()
                 ))
         }
+        return permissionsWithRationale.size
     }
 
     class PlaceEventAdapter(

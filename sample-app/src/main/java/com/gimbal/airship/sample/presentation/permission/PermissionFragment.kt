@@ -40,6 +40,14 @@ class PermissionFragment : Fragment(R.layout.fragment_permission) {
                         listOf(ACCESS_COARSE_LOCATION, ACCESS_FINE_LOCATION)
                     )
                 )
+                ACCESS_BACKGROUND_LOCATION -> pages.add(
+                    PageAdapter.Page(
+                        getString(R.string.background_permission_title),
+                        getString(R.string.background_permission_body,
+                            context?.packageManager?.backgroundPermissionOptionLabel.toString()),
+                        listOf(ACCESS_BACKGROUND_LOCATION)
+                    )
+                )
                 BLUETOOTH_SCAN -> pages.add(
                     PageAdapter.Page(
                         getString(R.string.bluetooth_permission_title),
@@ -68,20 +76,22 @@ class PermissionFragment : Fragment(R.layout.fragment_permission) {
     private val requestMultiplePermissionLauncher =
         registerForActivityResult(ActivityResultContracts.RequestMultiplePermissions()) {
                 permissionGrantMap: Map<String, Boolean> ->
-
             if (!permissionGrantMap.all { grant -> grant.value }) {
                 var warning = "Permission denied:"
                 permissionGrantMap.forEach {grant -> warning += " ${grant.key}" }
                 Timber.w(warning)
             }
-
-            if (binding.pager.currentItem == adapter.itemCount - 1) {
-                viewModel.onRequestsComplete()
-                findNavController().popBackStack()
-            } else {
-                binding.pager.setCurrentItem(binding.pager.currentItem + 1, true)
-            }
+            nextPageOrDone()
         }
+
+    private fun nextPageOrDone() {
+        if (binding.pager.currentItem == adapter.itemCount - 1) {
+            viewModel.onRequestsComplete()
+            findNavController().popBackStack()
+        } else {
+            binding.pager.setCurrentItem(binding.pager.currentItem + 1, true)
+        }
+    }
 
     class PageAdapter(private val pages: List<Page>) : RecyclerView.Adapter<PageViewHolder>() {
         data class Page(
