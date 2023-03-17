@@ -41,6 +41,10 @@ public class AirshipAdapter {
     private static final String TRACK_REGION_EVENT_PREFERENCE_KEY = "com.gimbal.track_region_event";
     private static final String STARTED_PREFERENCE = "com.urbanairship.gimbal.is_started";
 
+    private static final boolean TRACK_CUSTOM_ENTRY_DEFAULT = false;
+    private static final boolean TRACK_CUSTOM_EXIT_DEFAULT = false;
+    private static final boolean TRACK_REGION_EVENT_DEFAULT = false;
+
     private static final String TAG = "GimbalAdapter";
     private static final String SOURCE = "Gimbal";
 
@@ -124,10 +128,11 @@ public class AirshipAdapter {
 
     /**
      * Restores the last run state. If previously started it will start listening.
-     * This should be called early during app initialization in order to
-     * reliably process background location or beacon events. Called automatically by
-     * <code>AirshipAdapterInitializer</code> but may be called in `Application.onCreate()` if
-     * manual initialization is desired.
+     *
+     * This should be called early during app initialization in order to reliably process
+     * background location or beacon events.  To this end, {@code restore()} is Called
+     * automatically by {@code AirshipAdapterInitializer} but may be called in `Application
+     * .onCreate()` if manual initialization is desired, after disabling the initializer.
      */
     public void restore() {
         String apiKeyPreference = getApiKeyPreference();
@@ -148,13 +153,17 @@ public class AirshipAdapter {
 
     /**
      * Starts the adapter.  If the adapter is already started with the same API key, no action
-     * is taken.  If a new API key is supplied, the adapter will be stopped and restarted with
-     * the new key.
+     * is taken.  This only needs to be called one time -- the started state and the API key are
+     * persisted between app restarts.
      * <p>
-     * b>Note:</b> The adapter will fail to listen for places if the application does not have proper
-     * permissions.
+     * Note: If  API key is changed, Gimbal will re-register itself when the app
+     * is restarted.  Any analytic events generated before re-registration will belong to the
+     * previous Gimbal app.
+     * <p>
+     * b>Note:</b> The adapter will start, but fail to listen for places if the application does
+     * not have the requisite permission(s).
      *
-     * @param gimbalApiKey The Gimbal API key.
+     * @param gimbalApiKey Gimbal API key String
      * @return {@code true} if the adapter started, otherwise {@code false}.
      */
     public boolean start(@NonNull String gimbalApiKey) {
@@ -213,27 +222,39 @@ public class AirshipAdapter {
     }
 
     /**
-     * Set whether the adapter should create a CustomEvent upon Gimbal Place entry.
-     * */
-    public void setShouldTrackCustomEntryEvent(Boolean shouldTrackCustomEntryEvent) {
+     * Sets whether this Adapter should create a CustomEvent upon Gimbal Place entry.
+     * Defaults to `false`.  The value set here is persisted across app restarts.
+     *
+     * @param shouldTrackCustomEntryEvent specifies whether to track place entries as
+     *                                    Airship CustomEvents.
+     */
+    public void setShouldTrackCustomEntryEvent(boolean shouldTrackCustomEntryEvent) {
         preferences.edit()
                 .putBoolean(TRACK_CUSTOM_ENTRY_PREFERENCE_KEY, shouldTrackCustomEntryEvent)
                 .apply();
     }
 
     /**
-     * Set whether the adapter should create a CustomEvent upon Gimbal Place exit.
-     * */
-    public void setShouldTrackCustomExitEvent(Boolean shouldTrackCustomExitEvent) {
+     * Sets whether this Adapter should create a CustomEvent upon Gimbal Place departure.
+     * Defaults to `false`.  The value set here is persisted across app restarts.
+     *
+     * @param shouldTrackCustomExitEvent specifies whether to track place departures as
+     *                                    Airship CustomEvents.
+     */
+    public void setShouldTrackCustomExitEvent(boolean shouldTrackCustomExitEvent) {
         preferences.edit()
                 .putBoolean(TRACK_CUSTOM_EXIT_PREFERENCE_KEY, shouldTrackCustomExitEvent)
                 .apply();
     }
 
     /**
-     * Set whether the adapter should create a CustomEvent upon Gimbal Place exit.
-     * */
-    public void setShouldTrackRegionEvent(Boolean shouldTrackRegionEvent) {
+     * Sets whether this Adapter should create a RegionEvent upon Gimbal Place entry or departure.
+     * Defaults to `false`.  The value set here is persisted across app restarts.
+     *
+     * @param shouldTrackRegionEvent specifies whether to track place entries AND departures as
+     *                               Airship RegionEvents.
+     */
+    public void setShouldTrackRegionEvent(boolean shouldTrackRegionEvent) {
         preferences.edit()
                 .putBoolean(TRACK_REGION_EVENT_PREFERENCE_KEY, shouldTrackRegionEvent)
                 .apply();
@@ -405,7 +426,7 @@ public class AirshipAdapter {
         UAirship airship = UAirship.shared();
         synchronized (listeners) {
             if (regionEvent == RegionEvent.BOUNDARY_EVENT_ENTER) {
-                if (preferences.getBoolean(TRACK_REGION_EVENT_PREFERENCE_KEY, false)) {
+                if (preferences.getBoolean(TRACK_REGION_EVENT_PREFERENCE_KEY, TRACK_REGION_EVENT_DEFAULT)) {
                     RegionEvent event = createRegionEvent(visit, RegionEvent.BOUNDARY_EVENT_ENTER);
 
                     airship.getAnalytics().addEvent(event);
@@ -415,7 +436,7 @@ public class AirshipAdapter {
                     }
                 }
 
-                if (preferences.getBoolean(TRACK_CUSTOM_ENTRY_PREFERENCE_KEY, false)) {
+                if (preferences.getBoolean(TRACK_CUSTOM_ENTRY_PREFERENCE_KEY, TRACK_CUSTOM_ENTRY_DEFAULT)) {
                     CustomEvent event = createCustomEvent(CUSTOM_ENTRY_EVENT_NAME, visit, RegionEvent.BOUNDARY_EVENT_ENTER);
 
                     airship.getAnalytics().addEvent(event);
@@ -427,7 +448,7 @@ public class AirshipAdapter {
             }
 
             if (regionEvent == RegionEvent.BOUNDARY_EVENT_EXIT) {
-                if (preferences.getBoolean(TRACK_REGION_EVENT_PREFERENCE_KEY, false)) {
+                if (preferences.getBoolean(TRACK_REGION_EVENT_PREFERENCE_KEY, TRACK_REGION_EVENT_DEFAULT)) {
                     RegionEvent event = createRegionEvent(visit, RegionEvent.BOUNDARY_EVENT_EXIT);
 
                     airship.getAnalytics().addEvent(event);
@@ -437,7 +458,7 @@ public class AirshipAdapter {
                     }
                 }
 
-                if (preferences.getBoolean(TRACK_CUSTOM_EXIT_PREFERENCE_KEY, false)) {
+                if (preferences.getBoolean(TRACK_CUSTOM_EXIT_PREFERENCE_KEY, TRACK_CUSTOM_EXIT_DEFAULT)) {
                     CustomEvent event = createCustomEvent(CUSTOM_EXIT_EVENT_NAME, visit, RegionEvent.BOUNDARY_EVENT_EXIT);
 
                     airship.getAnalytics().addEvent(event);
