@@ -79,7 +79,7 @@ Note: The app will need `ACCESS_BACKGROUND_LOCATION` permissions Gimbal's to pro
 while the app is in the background, if this functionality is desired.  Please refer to
 [Request background location if necessary](https://developer.android.com/training/location/permissions#request-background-location).
 
-### Sample app
+### Sample app permissions
 
 The sample app in this repository makes a best effort to request all permissions required for full
 Gimbal SDK functionality, according to the guidelines provided by Android's Location Permission
@@ -106,6 +106,18 @@ To enable or disable the creation and tracking of Airship `CustomEvent`s, use th
 `shouldTrackCustomEntryEvents` and `shouldTrackCustomExitEvents` preferences to track events upon
 place entry and departure, respectively.  Place entry events are named `gimbal_custom_entry_event`
 and departure events are named `gimbal_custom_exit_event`.
+
+Each `CustomEvent` is populated with the following properties:
+
+- `visitID` - a UUID for the Gimbal Visit. This is common for the visit's entry and departure.
+- `placeIdentifier` - a UUID for the Gimbal Place
+- `placeName` - the human readable place name as entered in Gimbal Manager. Not necessarily unique!
+- `source` - always Gimbal
+- `boundaryEvent` - an enumeration of `1` for entry and `2` for exit/departure
+
+If there are any Place Attributes key-value pairs (as set on the triggering place in Gimbal Manager)
+present on the place that triggered the event, they will also be added to the `CustomEvent`
+properties.  They are prefixed with `GMBL_PA_`, e.g. `DMA:825` becomes `GMBL_PA_DMA:825`.
 
 For more information regarding Airship Custom Events, see the Airship
 [Custom Event](https://docs.airship.com/guides/messaging/user-guide/data/custom-events/index.html)
@@ -145,6 +157,20 @@ Adapter can be stopped at anytime by calling:
 
 Once `stop()` is called, Gimbal location event processing will not restart upon subsequent app
 starts, until `start()` is called again.
+
+## Running the Sample App
+
+- Create an Android app in Gimbal Manager.  Out of the box, the package/application ID is
+  `com.gimbal.airship.android` but this may be modified in `sample-app/build.gradle`.
+  Copy the new API key and paste it into the value of `GimbalIntegration.GIMBAL_API_KEY`.
+- Set up your Firebase project with a new app [reference](https://firebase.google.com/docs/android/setup).
+  Download the `google-services.json` to the `sample-app` directory.  The rest of the dependencies
+  and plugins should already be taken care of.
+- Set up your Airship app as you would normally.  Paste its development key and secret into
+  `src/main/assets/airshipconfig.properties`.  This Sample App does not use a custom Autopilot but
+  it is definitely possible to add your own.  Add your Firebase app's server key to the Android
+  configuration and enter the package ID.
+- Set up an Airship Automation with the `gimbal_custom_entry_event` Custom Event trigger.
 
 ## AirshipGimbalAdapter Migration
 
