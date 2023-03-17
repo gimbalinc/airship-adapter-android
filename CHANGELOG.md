@@ -8,7 +8,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Fixed
 
-- Potential crashes upon initialization when Airship is not yet ready
+- Potential crashes upon initialization when Airship has not yet started
+- Crashes when calling `AirshipAdapter.isStarted` before `Gimbal.setApiKey` has had a chance to run
 
 ### Removed
 
@@ -16,7 +17,12 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Changed
 
+- Use `gimbal-sdk` 4.9.1 and `urbanairship-core` 16.9.0.
 - Target / compile against Android API 33
+- Adapter now has non-transitive `compileOnly` dependency on `urbanairship-core` -- was transitive `implementation`
+- Allow changing of API key when adapter is already started -- no longer require to be preceded by `stop`
+- Remove Airship Channel listener when stopping the Adapter
+- Parameters for event tracking preferences are primitive `boolean` instead of nullable `Boolean`
 
 ## [1.0.0] - 2022-08-22
 
