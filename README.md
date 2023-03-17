@@ -14,7 +14,7 @@ with the Airship SDK for Android.
 To install it add the following dependency to your application's build.gradle file:
 
 ```groovy
-   implementation 'com.gimbal.android.v4:airship-adapter:1.0.0'
+   implementation 'com.gimbal.android:airship-adapter:2.0.0'
 ```
 
 ## Start the adapter
@@ -25,9 +25,15 @@ To start the adapter call:
    AirshipAdapter.shared(context).start("## PLACE YOUR GIMBAL API KEY HERE ##");
 ```
 
-Once the adapter is started, it will automatically resume its last state if
-the application is restarted in the background. You only need to call start
-once.
+Once the adapter is started, it will automatically resume its last state when the app is restarted,
+including if started in the background. The API key and the started status are persisted between
+app starts -- you only need to call `start`  once.
+
+Typically this will be called when the user has opted-in to a feature that benefits from
+location-triggered Airship notifications, after the appropriate permissions are granted by the user.
+It is also possible to call `start` every time in your `Application.onCreate` but note that the
+first time that permissions are granted, Gimbal will not request location updates until the next
+app restart.
 
 ### Restoring the adapter
 
@@ -47,32 +53,63 @@ To disable this behavior, the initializer may be prevented from merging into you
     </provider>
 ```
 
-When automatic initialization is disabled, the app should then invoke
-`AirshipAdapter.shared(context).restore()` in `Application.onCreate()` so that the Gimbal SDK can
-process Gimbal Place Events reliably when the app is restarted from terminated state.
+When automatic initialization is disabled, the app must then invoke
+`AirshipAdapter.shared(context).restore()` in `Application.onCreate()` (or previous to it in a
+custom `Initializer`.  This makes it so that the Gimbal SDK can process Gimbal Place Events reliably
+when the app is restarted from terminated state.
 
-### Android Marshmallow Permissions
+## Android Marshmallow+ Permissions
 
-Before the adapter is able to be started on Android M, it must request the location permission
-`ACCESS_FINE_LOCATION`. The adapter has convenience methods that you can use to request permissions
-while  starting the adapter:
+This Adapter does not make requests on behalf of the app, as location permission flow has gotten
+far too complex -- it can't presume to know how or when any particular app should make its requests.
+If granted, Gimbal will use fine, coarse and background location permissions, as well as Bluetooth
+scan permission, to be as location-aware as it can. 
 
-```java
-    AirshipAdapter.shared(context).startWithPermissionPrompt("## PLACE YOUR GIMBAL API KEY HERE ##");
-```
+Before the adapter is able to request location updates on Android API 23 or newer, the app must
+request the location permission `ACCESS_FINE_LOCATION` (and `ACCESS_COARSE_LOCATION` on Android API 31+).
+Technically the Gimbal SDK will still operate when granted only `ACCESS_COARSE_LOCATION` but only
+very large, region-sized geofences will trigger geofence place entries.
 
-Alternatively you can follow [requesting runtime permissions](https://developer.android.com/training/permissions/requesting.html)
-to manually request the proper permissions. Then once the permissions are granted, call start on
-the adapter.
+Please refer to [Request location access at runtime](https://developer.android.com/training/location/permissions#request-location-access-runtime).
+Once the permissions are granted, then call this adapter's `start()` method.  It is possible to
+start the adapter prior to acceptance of permissions, but then Gimbal may not be able to request
+location updates to trigger Airship events until the next app start.
 
-Note: You will need `ACCESS_BACKGROUND_LOCATION` permissions to use Gimbal's background features
+Note: The app will need `ACCESS_BACKGROUND_LOCATION` permissions Gimbal's to process place events
+while the app is in the background, if this functionality is desired.  Please refer to
+[Request background location if necessary](https://developer.android.com/training/location/permissions#request-background-location).
+
+### Sample app
+
+The sample app in this repository makes a best effort to request all permissions required for full
+Gimbal SDK functionality, according to the guidelines provided by Android's Location Permission
+training docs linked above.  This includes background location, Bluetooth scanning (for beacon
+Place Events), and notification permissions.  It first posts requests without providing a rationale
+to the user.  If a request is denied, the app will make a second attempt after providing a
+rationale.  Background location permissions always require a rationale to be provided.
+
+This flow is atypical from a real customer-facing app in that `ACCESS_BACKGROUND_LOCATION` is
+requested on the first run of the app, after foreground location  permission is granted by the user.
+Typically background permission should be requested when a specific app feature is enabled by the
+user -- where it would be beneficial to enable Airship notifications as triggered by Gimbal Place
+Events while the app is backgrounded.
+
+Feel free to use any of this code as appropriate to help you integrate permissions into your app.
 
 ## Enabling Event Tracking
 By default, event tracking is disabled, and thus must be explicitly enabled as described below.
-New apps should use CustomEvents rather than RegionEvents.
+New apps should use CustomEvents rather than RegionEvents.  These preferences are persisted
+across app starts.
 
 ### CustomEvents
-To enable or disable the tracking of Airship CustomEvent objects, use the shouldTrackCustomEntryEvents and shouldTrackCustomExitEvents properties to track events upon place entry and exit, as shown below. For more information regarding Airship Custom Events, see the documentation here.
+To enable or disable the creation and tracking of Airship `CustomEvent`s, use the
+`shouldTrackCustomEntryEvents` and `shouldTrackCustomExitEvents` preferences to track events upon
+place entry and departure, respectively.  Place entry events are named `gimbal_custom_entry_event`
+and departure events are named `gimbal_custom_exit_event`.
+
+For more information regarding Airship Custom Events, see the Airship
+[Custom Event](https://docs.airship.com/guides/messaging/user-guide/data/custom-events/index.html)
+documentation.
 
 ```java
     // To enable CustomEvent tracking for place exits
@@ -89,11 +126,14 @@ To enable or disable the tracking of Airship CustomEvent objects, use the should
 ```
 
 ### RegionEvents
-To enable or disable the tracking of Airship RegionEvent objects, use the shouldTrackRegionEvents property:
+To enable or disable the tracking of Airship `RegionEvent` objects, use the `shouldTrackRegionEvents`
+preference, similar to the above `CustomEvents`.  When enabled, `RegionEvents` are created and
+tracked for both Place entries AND departures.
 
-AirshipAdapter.shared.shouldTrackRegionEvents = true // enabled
-AirshipAdapter.shared.shouldTrackRegionEvents = false // disabled
-
+```kotlin
+    AirshipAdapter.shared.shouldTrackRegionEvents = true // enabled
+    AirshipAdapter.shared.shouldTrackRegionEvents = false // disabled
+```
 
 ## Stopping the adapter
 
@@ -104,9 +144,13 @@ Adapter can be stopped at anytime by calling:
 ```
 
 Once `stop()` is called, Gimbal location event processing will not restart upon subsequent app
-starts.
+starts, until `start()` is called again.
 
 ## AirshipGimbalAdapter Migration
 
-update gradle dependency to `com.gimbal.android.v4:airship-adapter:1.0.0`
-update all references to the `AirshipGimbalAdapter` class should be changed to `AirshipAdapter`
+* update gradle dependency to `com.gimbal.android:airship-adapter:2.0.0` -- note the group change
+* update all references to the `AirshipGimbalAdapter` class to `AirshipAdapter`
+* add any Airship dependencies to your app `build.gradle` (if not already present)
+* replace any calls to `startWithPermissionPrompt()` with `start()`
+  * implement permissions requests in your app -- refer to this repository's Sample app for example code
+* remove any calls to `restore()` from your app's initialization, unless manual initialization is desired (see above)
