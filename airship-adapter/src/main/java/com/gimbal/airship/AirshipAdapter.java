@@ -368,7 +368,7 @@ public class AirshipAdapter {
     private final PlaceEventListener placeEventListener = new PlaceEventListener() {
         @Override
         public void onVisitStart(@NonNull final Visit visit) {
-            Log.i(TAG, "Entered place: " + visit.getPlace().getName() + "Entrance date: " +
+            Log.i(TAG, "Entered place: " + visit.getPlace().getName() + " date: " +
                     DateUtils.createIso8601TimeStamp(visit.getArrivalTimeInMillis()));
 
             synchronized (cachedVisits) {
@@ -382,7 +382,7 @@ public class AirshipAdapter {
 
         @Override
         public void onVisitEnd(@NonNull final Visit visit) {
-            Log.i(TAG, "Exited place: " + visit.getPlace().getName() + "Entrance date: " +
+            Log.i(TAG, "Exited place: " + visit.getPlace().getName() + " date: " +
                     DateUtils.createIso8601TimeStamp(visit.getArrivalTimeInMillis()) + "Exit date:" +
                     DateUtils.createIso8601TimeStamp(visit.getDepartureTimeInMillis()));
 
