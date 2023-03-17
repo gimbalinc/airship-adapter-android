@@ -1,6 +1,6 @@
 package com.gimbal.airship.sample.presentation.main
 
-import android.Manifest
+import android.Manifest.permission.*
 import android.annotation.SuppressLint
 import android.content.DialogInterface
 import android.content.pm.PackageManager
@@ -82,16 +82,24 @@ class MainFragment : Fragment(R.layout.fragment_main) {
             }
             adapter.updateItems(it)
         }
+
+        viewModel.adapterEnabled.observe(viewLifecycleOwner) {
+            binding.switchEnabled.isChecked = it
+        }
+        binding.switchEnabled.setOnCheckedChangeListener { _, isChecked ->
+            viewModel.adapterEnabled.value = isChecked
+        }
+        updatePermissionTextValues()
     }
 
     @SuppressLint("InlinedApi")
     private fun permissionsToRequest(shouldProvideRationale: Boolean): List<String> {
         val desiredPermissions: List<Pair<String, Int?>> = listOf(
-            Pair(Manifest.permission.ACCESS_COARSE_LOCATION, null),
-            Pair(Manifest.permission.ACCESS_FINE_LOCATION, null),
-            Pair(Manifest.permission.ACCESS_BACKGROUND_LOCATION, 29),
-            Pair(Manifest.permission.BLUETOOTH_SCAN, 31),
-            Pair(Manifest.permission.POST_NOTIFICATIONS, 33)
+            Pair(ACCESS_COARSE_LOCATION, null),
+            Pair(ACCESS_FINE_LOCATION, null),
+            Pair(ACCESS_BACKGROUND_LOCATION, 29),
+            Pair(BLUETOOTH_SCAN, 31),
+            Pair(POST_NOTIFICATIONS, 33)
         )
 
         return desiredPermissions.filter { permission ->
@@ -112,18 +120,17 @@ class MainFragment : Fragment(R.layout.fragment_main) {
 
     private val requestPermissionsLauncher = registerForActivityResult(
         ActivityResultContracts.RequestMultiplePermissions()) {
-            // Turns out we don't actually care if any or all of the permissions in the callback
-            // list were granted, because BACKGROUND will never be granted on the first request.
-            // So we always check for permissions that should show a rationale.
-            // If none of them need rationale (perhaps on an older device, there's no BACKGROUND)
-            // then call `permissionsGranted` which starts up Gimbal.
-            // Otherwise at the end of the with-rationale requests, Gimbal is started
-            if (requestPermissionsWithRationale() == 0) {
-                viewModel.permissionsGranted()
+            updatePermissionTextValues()
+            if (it[ACCESS_FINE_LOCATION] == true) {
+                // This presumes that your app requires FINE location to be granted, and nothing
+                // more for Gimbal SDK to be started.  Also see `PermissionFragment` for the case
+                // where FINE location is granted not here but after the rationale is shown.
+                viewModel.adapterEnabled.value = true
             }
+            requestPermissionsWithRationale()
         }
 
-    private fun requestPermissionsWithRationale(): Int {
+    private fun requestPermissionsWithRationale() {
         val permissionsWithRationale = permissionsToRequest(true)
         if (permissionsWithRationale.isNotEmpty()) {
             findNavController()
@@ -131,8 +138,43 @@ class MainFragment : Fragment(R.layout.fragment_main) {
                     permissionsWithRationale.toTypedArray()
                 ))
         }
-        return permissionsWithRationale.size
     }
+
+    private fun updatePermissionTextValues() {
+        binding.textViewLocationValue.text = locationPermissionText
+        binding.textViewBluetoothValue.text = bluetoothPermissionText
+        binding.textViewNotificationValue.text = notificationPermissionText
+    }
+
+    private val locationPermissionText: String
+        get() =
+            if (hasPermission(ACCESS_BACKGROUND_LOCATION, 29)) {
+                if (hasPermission(ACCESS_FINE_LOCATION)) {
+                    "Background - Fine"
+                } else "Background - Coarse"
+            } else {
+                if (hasPermission(ACCESS_FINE_LOCATION)) {
+                    "Foreground - Fine"
+                } else if (hasPermission(ACCESS_COARSE_LOCATION)) {
+                    "Foreground - Coarse"
+                } else {
+                    "Denied"
+                }
+            }
+
+    private val bluetoothPermissionText: String
+        get() =
+            if (hasPermission(BLUETOOTH_SCAN, 31)) {
+                if (hasPermission(ACCESS_BACKGROUND_LOCATION, 29)) {
+                    "Background"
+                } else "Foreground"
+            } else "Denied"
+
+    private val notificationPermissionText: String
+        get() =
+            if (hasPermission(POST_NOTIFICATIONS, 33)) {
+                "Granted"
+            } else "Denied"
 
     class PlaceEventAdapter(
         private var items: List<PlaceEventDomainModel>

@@ -80,13 +80,16 @@ class PermissionFragment : Fragment(R.layout.fragment_permission) {
                 var warning = "Permission denied:"
                 permissionGrantMap.forEach {grant -> warning += " ${grant.key}" }
                 Timber.w(warning)
+            } else if (permissionGrantMap[ACCESS_FINE_LOCATION] == true) {
+                // This presumes that your app requires FINE location to be granted, and nothing
+                // more for Gimbal SDK to be started.
+                viewModel.adapterEnabled.value = true
             }
             nextPageOrDone()
         }
 
     private fun nextPageOrDone() {
         if (binding.pager.currentItem == adapter.itemCount - 1) {
-            viewModel.onRequestsComplete()
             findNavController().popBackStack()
         } else {
             binding.pager.setCurrentItem(binding.pager.currentItem + 1, true)

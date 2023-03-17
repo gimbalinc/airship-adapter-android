@@ -12,18 +12,15 @@ import javax.inject.Inject
 @HiltViewModel
 class MainViewModel @Inject constructor(
     private val placeEventRepository: PlaceEventRepository,
-    private val gimbalIntegration: GimbalIntegration
+    gimbalIntegration: GimbalIntegration
 ) : ViewModel() {
 
     val placeEvents = placeEventRepository.getPlaceEvents().asLiveData()
+    val adapterEnabled = gimbalIntegration.adapterEnabled
 
     fun onDeleteClick() {
         viewModelScope.launch {
             placeEventRepository.clearPlaceEvents()
         }
-    }
-
-    fun permissionsGranted() {
-        gimbalIntegration.enableGimbal()
     }
 }
