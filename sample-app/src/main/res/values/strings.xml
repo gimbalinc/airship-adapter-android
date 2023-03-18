@@ -1,0 +1,14 @@
+<resources>
+    <string name="app_name">Gimbal Airship Sample App</string>
+    <string name="location_permission_title">Allow Location Services</string>
+    <string name="location_permission_body">Gimbal uses location to trigger geofence Place Events.\n\nOn Android 12 and newer, this is also required to scan for Bluetooth beacons.</string>
+    <string name="background_permission_title">Allow Background Location</string>
+    <string name="background_permission_body">Gimbal can access location in the background to increase your ability to engage with your customers with geofence and beacon Place Events.\n\nOn Android 11 and newer, you will be taken to a system settings menu with this option.  Select the \"%1$s\" option to enable background location events.</string>
+    <string name="bluetooth_permission_title">Allow Bluetooth scanning</string>
+    <string name="bluetooth_permission_body">Gimbal uses Bluetooth to scan for beacons to trigger beacon Place Events.\n\nIf you aren\'t using beacons then you may safely ignore this permission.</string>
+    <string name="notification_permission_title">Allow Notifications</string>
+    <string name="notification_permission_body">Airship requires notification permissions to post user notifications.</string>
+    <string name="continue_button">Continue</string>
+    <string name="place_event_item">%1$s %2$s %3$s</string>
+    <string name="decline_permission">Decline</string>
+</resources>
