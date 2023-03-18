@@ -1,4 +1,4 @@
-package com.gimbal.airship.sample
+package com.gimbal.airship
 import org.junit.Test
 
 import org.junit.Assert.*

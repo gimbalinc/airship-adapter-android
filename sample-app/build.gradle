@@ -93,4 +93,14 @@ dependencies {
     androidTestImplementation "androidx.navigation:navigation-testing:$nav_version"
 }
 
-apply plugin: 'com.google.gms.google-services'
+detekt {
+    config = rootProject.files("config/detekt.yaml")
+}
+
+def googleServicesFile = rootProject.file('sample-app/google-services.json')
+if (googleServicesFile.exists()) {
+    apply plugin: 'com.google.gms.google-services'
+} else {
+    Logging.getLogger("sample-app")
+            .warn("sample-app will not run without supplying your Firebase google-services.json")
+}

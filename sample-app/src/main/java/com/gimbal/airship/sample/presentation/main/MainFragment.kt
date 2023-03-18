@@ -97,9 +97,9 @@ class MainFragment : Fragment(R.layout.fragment_main) {
         val desiredPermissions: List<Pair<String, Int?>> = listOf(
             Pair(ACCESS_COARSE_LOCATION, null),
             Pair(ACCESS_FINE_LOCATION, null),
-            Pair(ACCESS_BACKGROUND_LOCATION, 29),
-            Pair(BLUETOOTH_SCAN, 31),
-            Pair(POST_NOTIFICATIONS, 33)
+            Pair(ACCESS_BACKGROUND_LOCATION, Build.VERSION_CODES.Q),
+            Pair(BLUETOOTH_SCAN, Build.VERSION_CODES.S),
+            Pair(POST_NOTIFICATIONS, Build.VERSION_CODES.TIRAMISU)
         )
 
         return desiredPermissions.filter { permission ->
@@ -148,7 +148,7 @@ class MainFragment : Fragment(R.layout.fragment_main) {
 
     private val locationPermissionText: String
         get() =
-            if (hasPermission(ACCESS_BACKGROUND_LOCATION, 29)) {
+            if (hasPermission(ACCESS_BACKGROUND_LOCATION, Build.VERSION_CODES.Q)) {
                 if (hasPermission(ACCESS_FINE_LOCATION)) {
                     "Background - Fine"
                 } else "Background - Coarse"
@@ -164,15 +164,15 @@ class MainFragment : Fragment(R.layout.fragment_main) {
 
     private val bluetoothPermissionText: String
         get() =
-            if (hasPermission(BLUETOOTH_SCAN, 31)) {
-                if (hasPermission(ACCESS_BACKGROUND_LOCATION, 29)) {
+            if (hasPermission(BLUETOOTH_SCAN, Build.VERSION_CODES.S)) {
+                if (hasPermission(ACCESS_BACKGROUND_LOCATION, Build.VERSION_CODES.Q)) {
                     "Background"
                 } else "Foreground"
             } else "Denied"
 
     private val notificationPermissionText: String
         get() =
-            if (hasPermission(POST_NOTIFICATIONS, 33)) {
+            if (hasPermission(POST_NOTIFICATIONS, Build.VERSION_CODES.TIRAMISU)) {
                 "Granted"
             } else "Denied"
 
