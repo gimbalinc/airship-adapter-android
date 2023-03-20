@@ -4,7 +4,7 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
-## [Unreleased]
+## [2.0.0] - 2023-03-21
 
 ### Fixed
 
@@ -17,7 +17,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Changed
 
-- Use `gimbal-sdk` 4.9.1 and `urbanairship-core` 16.9.0.
+- Maven group is now `com.gimbal.android` -- full coordinates `com.gimbal.android:airship-adapter:2.0.0`
+- Update `gimbal-sdk` to 4.9.1 and `urbanairship-core` to 16.9.0.
 - Target / compile against Android API 33
 - Adapter now has non-transitive `compileOnly` dependency on `urbanairship-core` -- was transitive `implementation`
 - Allow changing of API key when adapter is already started -- no longer require to be preceded by `stop`
