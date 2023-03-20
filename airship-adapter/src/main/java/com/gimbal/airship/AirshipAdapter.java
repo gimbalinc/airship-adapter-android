@@ -106,17 +106,17 @@ public class AirshipAdapter {
     }
 
     /**
-     * Hidden to support the singleton pattern.
+     * Hidden to support the singleton pattern
      *
-     * @param context The application context.
+     * @param context The application context
      */
-    AirshipAdapter(@NonNull Context context) {
+    private AirshipAdapter(@NonNull Context context) {
         this.context = context.getApplicationContext();
         this.preferences = context.getSharedPreferences(PREFERENCE_NAME, Context.MODE_PRIVATE);
     }
 
     /**
-     * GimbalAdapter shared instance.
+     * GimbalAdapter shared instance
      */
     public synchronized static AirshipAdapter shared(@NonNull Context context) {
         if (instance == null) {
@@ -127,7 +127,7 @@ public class AirshipAdapter {
     }
 
     /**
-     * Restores the last run state. If previously started it will start listening.
+     * Restores the last run state from a previous app lifecycle.
      *
      * This should be called early during app initialization in order to reliably process
      * background location or beacon events.  To this end, {@code restore()} is Called
@@ -152,15 +152,18 @@ public class AirshipAdapter {
     }
 
     /**
-     * Starts the adapter.  If the adapter is already started with the same API key, no action
-     * is taken.  This only needs to be called one time -- the started state and the API key are
-     * persisted between app restarts.
+     * Starts the adapter -- starts Gimbal and enables forwarding of events to Airship
      * <p>
-     * Note: If  API key is changed, Gimbal will re-register itself when the app
+     * If the adapter is already started with the same API key, no action is taken.  This only
+     * needs to be called one time -- the started state and the API key are persisted between app
+     * restarts.  It must be called after Airship has been initialized, i.e. is taking off or
+     * flying.
+     * <p>
+     * <b>Note:</b> If  API key is changed, Gimbal will re-register itself when the app
      * is restarted.  Any analytic events generated before re-registration will belong to the
      * previous Gimbal app.
      * <p>
-     * b>Note:</b> The adapter will start, but fail to listen for places if the application does
+     * <b>Note:</b> The adapter will start, but fail to listen for places if the application does
      * not have the requisite permission(s).
      *
      * @param gimbalApiKey Gimbal API key String
@@ -168,7 +171,7 @@ public class AirshipAdapter {
      */
     public boolean start(@NonNull String gimbalApiKey) {
         if (gimbalApiKey.trim().isEmpty()) {
-            Log.w(TAG, "Attempted to start Gimbal with empty API key");
+            Log.w(TAG, "Cannot start Gimbal with empty API key");
             return isAdapterStarted;
         }
 
@@ -187,11 +190,12 @@ public class AirshipAdapter {
     }
 
     /**
-     * Stops the adapter.
+     * Stops the adapter -- stops Gimbal from monitoring location for Place Events
+     * <p>
+     * If the adapter is not already started then this has no effect.
      */
     public void stop() {
         if (!isAdapterStarted) {
-            Log.w(TAG, "stop() called when adapter was not started");
             return;
         }
 
@@ -200,17 +204,21 @@ public class AirshipAdapter {
             Gimbal.stop();
             isAdapterStarted = false;
             PlaceManager.getInstance().removeListener(placeEventListener);
-            UAirship.shared(airship -> {
-                synchronized(airshipChannelListener) {
-                    if (airshipChannelListener.get() != null) {
-                        airship.getChannel().removeChannelListener(
-                                airshipChannelListener.getAndSet(null));
-                   }
-                }
-            });
-            Log.i(TAG, "Adapter Stopped");
+            if (isAirshipReady()) {
+                UAirship.shared(airship -> {
+                    synchronized (airshipChannelListener) {
+                        if (airshipChannelListener.get() != null) {
+                            airship.getChannel().removeChannelListener(
+                                    airshipChannelListener.getAndSet(null));
+                        }
+                    }
+                });
+            } else {
+                Log.w(TAG, "Airship not taking off or flying - unable to remove channel listener");
+            }
+            Log.i(TAG, "Adapter stopped");
         } catch (Exception e) {
-            Log.w(TAG,"Caught exception stopping Gimbal. ", e);
+            Log.w(TAG,"Caught exception stopping Gimbal", e);
         }
     }
 
@@ -284,6 +292,10 @@ public class AirshipAdapter {
 
     private void startAdapter(@NonNull String gimbalApiKey) {
         if (isAdapterStarted) {
+            Log.w(TAG, "Calling start when adapter is already started has no effect");
+            return;
+        } else if (!isAirshipReady()) {
+            Log.w(TAG, "Unable to start adapter when Airship is not taking off or flying");
             return;
         }
 
@@ -326,8 +338,8 @@ public class AirshipAdapter {
     }
 
     private synchronized void onAirshipReady(@NonNull UAirship airship) {
-        if (!isAdapterStarted || !(UAirship.isFlying() || UAirship.isTakingOff())) {
-            Log.w(TAG, "onAirshipReady called when adapter or Airship is not actually ready");
+        if (!isAdapterStarted || !isAirshipReady()) {
+            Log.w(TAG, "OnReadyCallback invoked when adapter or Airship is not actually ready");
             return;
         }
 
