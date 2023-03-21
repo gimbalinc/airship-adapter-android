@@ -5,20 +5,37 @@ plugins {
 }
 
 group = 'com.gimbal.android'
-description = "Gimbal Airship Adapter - Android"
+description = "Use Gimbal Place triggers to track location-based Airship CustomEvents"
 version = rootProject.adapterVersion
 
 android {
+    namespace = 'com.gimbal.android'
+
     compileSdkVersion rootProject.compileSdkVersion
 
     defaultConfig {
         minSdkVersion rootProject.minSdkVersion as Integer
         targetSdkVersion rootProject.targetSdkVersion as Integer
+        aarMetadata {
+            minCompileSdk = 28
+        }
+    }
+
+    buildTypes {
+        release {}
+        debug {}
     }
 
     compileOptions {
         sourceCompatibility JavaVersion.VERSION_1_8
         targetCompatibility JavaVersion.VERSION_1_8
+    }
+
+    publishing {
+        singleVariant('release') {
+            withSourcesJar()
+            withJavadocJar()
+        }
     }
 }
 
@@ -30,66 +47,52 @@ dependencies {
     implementation "androidx.startup:startup-runtime:1.1.1"
 }
 
-task sourcesJar(type: Jar) {
-    archiveClassifier.set("sources")
-    from android.sourceSets["main"].java.srcDirs
-}
-
-// Create the pom configuration:
-def pomConfig = {
-    licenses {
-        license {
-            name 'The Apache Software License, Version 2.0'
-            url 'http://www.apache.org/licenses/LICENSE-2.0.txt'
-            distribution 'repo'
-        }
-    }
-
-    developers {
-        developer {
-            name 'Gimbal Developers'
-            email 'developers@gimbal.com'
-            organization 'Gimbal, Inc.'
-            organizationUrl 'https://gimbal.com'
-        }
-    }
-
-    scm {
-        url 'https://github.com/PaeDae/android-airship-adapter'
-        connection 'https://github.com/PaeDae/android-airship-adapter.git'
-    }
-}
-
 publishing {
     publications {
-        Production(MavenPublication) {
-            groupId project.group
-            artifactId project.name
-            version project.version
+        release(MavenPublication) {
+            afterEvaluate {
+                from components.release
+            }
 
-            artifact("$buildDir/outputs/aar/" + project.name + "-release.aar")
-            artifact(sourcesJar)
+            pom {
+                name = "Gimbal Airship Adapter"
+                description = project.description
+                url = "https://docs.gimbal.com"
 
-            pom.withXml {
-                def root = asNode()
-
-                def dependenciesNode = root.appendNode('dependencies')
-                configurations.implementation.allDependencies.each {
-                    def dependencyNode = dependenciesNode.appendNode('dependency')
-                    dependencyNode.appendNode('groupId', it.group)
-                    dependencyNode.appendNode('artifactId', it.name)
-                    dependencyNode.appendNode('version', it.version)
+                licenses {
+                    license {
+                        name = 'The Apache Software License, Version 2.0'
+                        url = 'http://www.apache.org/licenses/LICENSE-2.0.txt'
+                        distribution = 'repo'
+                    }
                 }
 
-                root.appendNode('description', project.description)
-                root.appendNode('name', project.name)
-                root.appendNode('url', 'https://docs.gimbal.com')
-                root.children().last() + pomConfig
+                developers {
+                    developer {
+                        name = 'Gimbal Developers'
+                        email = 'developers@gimbal.com'
+                        organization = 'Infillion'
+                        organizationUrl = 'https://infillion.com'
+                    }
+                }
+
+                contributors {
+                    contributor {
+                        name = 'Urban Airship'
+                    }
+                }
+
+                scm {
+                    connection = 'scm:git:https://github.com/PaeDae/android-airship-adapter.git'
+                    developerConnection = 'scm:git:git@github.com/PaeDae/android-airship-adapter.git'
+                    url = 'https://github.com/PaeDae/android-airship-adapter'
+                }
             }
         }
     }
 }
 
 signing {
-    sign publishing.publications
+    sign publishing.publications.release
 }
+
