@@ -1,0 +1,3 @@
+style:
+  WildcardImport:
+    excludeImports: ['java.util.*', 'kotlinx.android.synthetic.*', 'android.Manifest.permission.*', 'android.view.*']
