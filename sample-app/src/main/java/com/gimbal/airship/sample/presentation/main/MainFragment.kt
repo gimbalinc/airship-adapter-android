@@ -1,6 +1,6 @@
 package com.gimbal.airship.sample.presentation.main
 
-import android.Manifest
+import android.Manifest.permission.*
 import android.annotation.SuppressLint
 import android.content.DialogInterface
 import android.content.pm.PackageManager
@@ -12,6 +12,7 @@ import android.view.MenuInflater
 import android.view.MenuItem
 import android.view.View
 import android.view.ViewGroup
+import androidx.activity.result.contract.ActivityResultContracts
 import androidx.appcompat.app.AlertDialog
 import androidx.core.content.ContextCompat
 import androidx.core.view.MenuHost
@@ -26,7 +27,6 @@ import com.gimbal.airship.sample.databinding.FragmentMainBinding
 import com.gimbal.airship.sample.databinding.ItemPlaceEventBinding
 import com.gimbal.airship.sample.domain.PlaceEventDomainModel
 import com.gimbal.airship.sample.viewBinding
-import com.urbanairship.UAirship
 import dagger.hilt.android.AndroidEntryPoint
 import timber.log.Timber
 
@@ -38,7 +38,7 @@ class MainFragment : Fragment(R.layout.fragment_main) {
     override fun onViewCreated(view: View, savedInstanceState: Bundle?) {
         super.onViewCreated(view, savedInstanceState)
 
-        val menuHost: MenuHost = requireActivity()
+        val menuHost: MenuHost = requireActivity() as MenuHost
         menuHost.addMenuProvider(object : MenuProvider {
             override fun onCreateMenu(menu: Menu, menuInflater: MenuInflater) {
                 // Add menu items here
@@ -53,7 +53,7 @@ class MainFragment : Fragment(R.layout.fragment_main) {
 
                     builder.setMessage("Are you sure you want to delete all notifications?")
                         .setTitle("Delete")
-                        .setPositiveButton("Yes") { dialog: DialogInterface, which: Int ->
+                        .setPositiveButton("Yes") { dialog: DialogInterface, _: Int ->
                             viewModel.onDeleteClick()
                             dialog.dismiss()
                         }
@@ -68,51 +68,118 @@ class MainFragment : Fragment(R.layout.fragment_main) {
             }
         }, viewLifecycleOwner, Lifecycle.State.RESUMED)
 
-        if (!checkPermissions()) {
-            findNavController().navigate(MainFragmentDirections.actionMainFragmentToPermissionFragment())
-            return
+        val permissionsToRequestWithoutRationale = permissionsToRequest(false)
+        if (permissionsToRequestWithoutRationale.isNotEmpty()) {
+            requestPermissionsLauncher.launch(permissionsToRequestWithoutRationale.toTypedArray())
+        } else {
+            requestPermissionsWithRationale()
         }
-
-        UAirship.takeOff(requireActivity().application)
-//        UAirship.shared().pushManager.userNotificationsEnabled = true
 
         val adapter = PlaceEventAdapter(listOf())
         binding.recycleView.adapter = adapter
 
-        viewModel.onPermissionsGranted()
         viewModel.placeEvents.observe(viewLifecycleOwner) {
+            Timber.d("Refreshing transcript")
             it.map { placeEvent ->
-                Timber.d(placeEvent.place)
+                Timber.d(placeEvent.formattedTime + " " +
+                        (if (placeEvent.isArrival) "ARRIVED  " else "DEPARTED ") +
+                        placeEvent.placeName)
             }
             adapter.updateItems(it)
         }
+
+        viewModel.adapterEnabled.observe(viewLifecycleOwner) {
+            binding.switchEnabled.isChecked = it
+        }
+        binding.switchEnabled.setOnCheckedChangeListener { _, isChecked ->
+            viewModel.adapterEnabled.value = isChecked
+        }
+        updatePermissionTextValues()
     }
 
-    /**
-     * Checks if the user has given the required permissions
-     *
-     * @return true if the user has given all permissions, false otherwise.
-     */
-    private fun checkPermissions(): Boolean {
-        val hasFineLocationPermissions = ContextCompat.checkSelfPermission(
-            requireContext(),
-            Manifest.permission.ACCESS_FINE_LOCATION
-        ) == PackageManager.PERMISSION_GRANTED
+    @SuppressLint("InlinedApi")
+    private fun permissionsToRequest(shouldProvideRationale: Boolean): List<String> {
+        val desiredPermissions: List<Pair<String, Int?>> = listOf(
+            Pair(ACCESS_COARSE_LOCATION, null),
+            Pair(ACCESS_FINE_LOCATION, null),
+            Pair(ACCESS_BACKGROUND_LOCATION, Build.VERSION_CODES.Q),
+            Pair(BLUETOOTH_SCAN, Build.VERSION_CODES.S),
+            Pair(POST_NOTIFICATIONS, Build.VERSION_CODES.TIRAMISU)
+        )
 
-        val hasCoarseLocationPermissions = ContextCompat.checkSelfPermission(
-            requireContext(),
-            Manifest.permission.ACCESS_COARSE_LOCATION
-        ) == PackageManager.PERMISSION_GRANTED
+        return desiredPermissions.filter { permission ->
+            if (!hasPermission(permission.first, permission.second)) {
+                shouldShowRequestPermissionRationale(permission.first) == shouldProvideRationale
+            } else false
+        }.map {
+            it.first
+        }
+    }
 
-        val hasNotificationPermissions = if (Build.VERSION.SDK_INT >= 33) {
-            ContextCompat.checkSelfPermission(
-                requireContext(),
-                Manifest.permission.POST_NOTIFICATIONS
-            ) == PackageManager.PERMISSION_GRANTED
+    private fun hasPermission(permission: String, minApi: Int? = null): Boolean {
+        return if (minApi == null || Build.VERSION.SDK_INT >= minApi) {
+            ContextCompat.checkSelfPermission(requireContext(), permission) ==
+                    PackageManager.PERMISSION_GRANTED
         } else true
-
-        return hasFineLocationPermissions && hasCoarseLocationPermissions && hasNotificationPermissions
     }
+
+    private val requestPermissionsLauncher = registerForActivityResult(
+        ActivityResultContracts.RequestMultiplePermissions()) {
+            updatePermissionTextValues()
+            if (it[ACCESS_FINE_LOCATION] == true) {
+                // This presumes that your app requires FINE location to be granted, and nothing
+                // more for Gimbal SDK to be started.  Also see `PermissionFragment` for the case
+                // where FINE location is granted not here but after the rationale is shown.
+                viewModel.adapterEnabled.value = true
+            }
+            requestPermissionsWithRationale()
+        }
+
+    private fun requestPermissionsWithRationale() {
+        val permissionsWithRationale = permissionsToRequest(true)
+        if (permissionsWithRationale.isNotEmpty()) {
+            findNavController()
+                .navigate(MainFragmentDirections.actionMainFragmentToPermissionFragment(
+                    permissionsWithRationale.toTypedArray()
+                ))
+        }
+    }
+
+    private fun updatePermissionTextValues() {
+        binding.textViewLocationValue.text = locationPermissionText
+        binding.textViewBluetoothValue.text = bluetoothPermissionText
+        binding.textViewNotificationValue.text = notificationPermissionText
+    }
+
+    private val locationPermissionText: String
+        get() =
+            if (hasPermission(ACCESS_BACKGROUND_LOCATION, Build.VERSION_CODES.Q)) {
+                if (hasPermission(ACCESS_FINE_LOCATION)) {
+                    "Background - Fine"
+                } else "Background - Coarse"
+            } else {
+                if (hasPermission(ACCESS_FINE_LOCATION)) {
+                    "Foreground - Fine"
+                } else if (hasPermission(ACCESS_COARSE_LOCATION)) {
+                    "Foreground - Coarse"
+                } else {
+                    "Denied"
+                }
+            }
+
+    private val bluetoothPermissionText: String
+        get() =
+            if (hasPermission(BLUETOOTH_SCAN, Build.VERSION_CODES.S)) {
+                if (hasPermission(ACCESS_BACKGROUND_LOCATION, Build.VERSION_CODES.Q)) {
+                    "Background"
+                } else "Foreground"
+            } else "Denied"
+
+    private val notificationPermissionText: String
+        get() =
+            if (hasPermission(POST_NOTIFICATIONS, Build.VERSION_CODES.TIRAMISU)) {
+                "Granted"
+            } else "Denied"
 
     class PlaceEventAdapter(
         private var items: List<PlaceEventDomainModel>
@@ -143,9 +210,9 @@ class MainFragment : Fragment(R.layout.fragment_main) {
         private val binding: ItemPlaceEventBinding
     ) : RecyclerView.ViewHolder(binding.root) {
         internal fun bind(item: PlaceEventDomainModel) {
-            binding.label.text = if (item.isArrival)
-                "Arrived at ${item.place} at ${item.time}"
-            else "Departed ${item.place} at ${item.time}"
+            binding.label.text = binding.label.resources.getString(R.string.place_event_item,
+                item.formattedTime, if (item.isArrival) "ARRIVED" else "DEPARTED", item.placeName
+            )
         }
     }
 }

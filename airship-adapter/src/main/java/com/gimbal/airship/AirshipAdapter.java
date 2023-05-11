@@ -4,20 +4,13 @@
 
 package com.gimbal.airship;
 
-import static android.Manifest.permission.ACCESS_FINE_LOCATION;
-
-import android.annotation.SuppressLint;
 import android.app.Application;
 import android.content.Context;
 import android.content.SharedPreferences;
-import android.content.pm.PackageManager;
-import android.os.AsyncTask;
 import android.util.Log;
 
 import androidx.annotation.NonNull;
 import androidx.annotation.Nullable;
-import androidx.annotation.RequiresPermission;
-import androidx.core.content.ContextCompat;
 
 import com.gimbal.android.Attributes;
 import com.gimbal.android.DeviceAttributesManager;
@@ -30,11 +23,11 @@ import com.urbanairship.analytics.CustomEvent;
 import com.urbanairship.analytics.location.RegionEvent;
 import com.urbanairship.channel.AirshipChannelListener;
 import com.urbanairship.util.DateUtils;
-import com.urbanairship.util.HelperActivity;
 
 import java.util.LinkedList;
 import java.util.List;
 import java.util.concurrent.CopyOnWriteArrayList;
+import java.util.concurrent.atomic.AtomicReference;
 
 /**
  * GimbalAdapter interfaces Gimbal SDK functionality with Urban Airship services.
@@ -47,6 +40,10 @@ public class AirshipAdapter {
     private static final String TRACK_CUSTOM_EXIT_PREFERENCE_KEY = "com.gimbal.track_custom_exit";
     private static final String TRACK_REGION_EVENT_PREFERENCE_KEY = "com.gimbal.track_region_event";
     private static final String STARTED_PREFERENCE = "com.urbanairship.gimbal.is_started";
+
+    private static final boolean TRACK_CUSTOM_ENTRY_DEFAULT = false;
+    private static final boolean TRACK_CUSTOM_EXIT_DEFAULT = false;
+    private static final boolean TRACK_REGION_EVENT_DEFAULT = false;
 
     private static final String TAG = "GimbalAdapter";
     private static final String SOURCE = "Gimbal";
@@ -67,22 +64,8 @@ public class AirshipAdapter {
     private final Context context;
     private final List<Listener> listeners = new CopyOnWriteArrayList<>();
     private boolean isAdapterStarted = false;
-    private RequestPermissionsTask requestPermissionsTask;
-    private LinkedList<CachedVisit> cachedVisits = new LinkedList<>();
-
-
-    /**
-     * Permission result callback.
-     */
-    public interface PermissionResultCallback {
-
-        /**
-         * Called with the permission result.
-         *
-         * @param enabled {@link true} if the permissions have been granted, otherwise {@code false}.
-         */
-        void onResult(boolean enabled);
-    }
+    private final LinkedList<CachedVisit> cachedVisits = new LinkedList<>();
+    private final AtomicReference<AirshipChannelListener> airshipChannelListener = new AtomicReference<>();
 
     /**
      * Adapter listener.
@@ -123,39 +106,6 @@ public class AirshipAdapter {
     }
 
     /**
-     * Listener for Gimbal place events. Creates an analytics event
-     * corresponding to boundary event type, and Event type preference.
-     */
-    private final PlaceEventListener placeEventListener = new PlaceEventListener() {
-        @Override
-        public void onVisitStart(@NonNull final Visit visit) {
-            Log.i(TAG, "Entered place: " + visit.getPlace().getName() + "Entrance date: " +
-                    DateUtils.createIso8601TimeStamp(visit.getArrivalTimeInMillis()));
-
-            // If Airship is not ready yet, store visit for later
-            if (!UAirship.isFlying() && !UAirship.isTakingOff()) {
-                cachedVisits.add(new CachedVisit(visit, RegionEvent.BOUNDARY_EVENT_ENTER));
-                return;
-            }
-            createAirshipEvent(visit, RegionEvent.BOUNDARY_EVENT_ENTER);
-        }
-
-        @Override
-        public void onVisitEnd(@NonNull final Visit visit) {
-            Log.i(TAG, "Exited place: " + visit.getPlace().getName() + "Entrance date: " +
-                    DateUtils.createIso8601TimeStamp(visit.getArrivalTimeInMillis()) + "Exit date:" +
-                    DateUtils.createIso8601TimeStamp(visit.getDepartureTimeInMillis()));
-
-            // If Airship is not ready yet, store visit for later
-            if (!UAirship.isFlying() && !UAirship.isTakingOff()) {
-                cachedVisits.add(new CachedVisit(visit, RegionEvent.BOUNDARY_EVENT_EXIT));
-                return;
-            }
-            createAirshipEvent(visit, RegionEvent.BOUNDARY_EVENT_EXIT);
-        }
-    };
-
-    /**
      * Hidden to support the singleton pattern.
      *
      * @param context The application context.
@@ -176,94 +126,138 @@ public class AirshipAdapter {
         return instance;
     }
 
-    void unloadQueuedEvents() {
-        for (CachedVisit cachedVisit: cachedVisits) {
-            createAirshipEvent(cachedVisit.visit, cachedVisit.regionEvent);
-        }
-        cachedVisits = new LinkedList<>();
-    }
+    /**
+     * Restores the last run state. If previously started it will start listening.
+     *
+     * This should be called early during app initialization in order to reliably process
+     * background location or beacon events.  To this end, {@code restore()} is Called
+     * automatically by {@code AirshipAdapterInitializer} but may be called in `Application
+     * .onCreate()` if manual initialization is desired, after disabling the initializer.
+     */
+    public void restore() {
+        String apiKeyPreference = getApiKeyPreference();
+        boolean previouslyStarted = getStartedPreference();
 
-    private void createAirshipEvent(Visit visit, int regionEvent) {
-        UAirship airship = UAirship.shared();
-        if (regionEvent == RegionEvent.BOUNDARY_EVENT_ENTER) {
-            if (preferences.getBoolean(TRACK_REGION_EVENT_PREFERENCE_KEY, false)) {
-                RegionEvent event = createRegionEvent(visit, RegionEvent.BOUNDARY_EVENT_ENTER);
-
-                airship.getAnalytics().addEvent(event);
-
-                for (Listener listener : listeners) {
-                    listener.onRegionEntered(event, visit);
-                }
+        if (apiKeyPreference != null && previouslyStarted) {
+            Log.i(TAG, "Restoring Gimbal-Airship Adapter");
+            startAdapter(apiKeyPreference);
+            if (isAdapterStarted) {
+                Log.i(TAG, "Gimbal Airship adapter restored");
+            } else {
+                Log.e(TAG, "Failed to restore Gimbal Airship adapter");
             }
-
-            if (preferences.getBoolean(TRACK_CUSTOM_ENTRY_PREFERENCE_KEY, false)) {
-                CustomEvent event = createCustomEvent(CUSTOM_ENTRY_EVENT_NAME, visit, RegionEvent.BOUNDARY_EVENT_ENTER);
-
-                airship.getAnalytics().addEvent(event);
-
-                for (Listener listener : listeners) {
-                    listener.onCustomRegionEntry(event, visit);
-                }
-            }
-        }
-
-        if (regionEvent == RegionEvent.BOUNDARY_EVENT_EXIT) {
-            if (preferences.getBoolean(TRACK_REGION_EVENT_PREFERENCE_KEY, false)) {
-                RegionEvent event = createRegionEvent(visit, RegionEvent.BOUNDARY_EVENT_EXIT);
-
-                airship.getAnalytics().addEvent(event);
-
-                for (Listener listener : listeners) {
-                    listener.onRegionExited(event, visit);
-                }
-            }
-
-            if (preferences.getBoolean(TRACK_CUSTOM_EXIT_PREFERENCE_KEY, false)) {
-                CustomEvent event = createCustomEvent(CUSTOM_EXIT_EVENT_NAME, visit, RegionEvent.BOUNDARY_EVENT_EXIT);
-
-                airship.getAnalytics().addEvent(event);
-
-                for (Listener listener : listeners) {
-                    listener.onCustomRegionExit(event, visit);
-                }
-            }
+        } else if (!previouslyStarted) {
+            Log.d(TAG, "Gimbal Airship adapter not previously started, nothing to restore");
         }
     }
 
-    private RegionEvent createRegionEvent(Visit visit, int boundaryEvent) {
-        return RegionEvent.newBuilder()
-                .setBoundaryEvent(boundaryEvent)
-                .setSource(SOURCE)
-                .setRegionId(visit.getPlace().getIdentifier())
-                .build();
-    }
+    /**
+     * Starts the adapter.  If the adapter is already started with the same API key, no action
+     * is taken.  This only needs to be called one time -- the started state and the API key are
+     * persisted between app restarts.
+     * <p>
+     * Note: If  API key is changed, Gimbal will re-register itself when the app
+     * is restarted.  Any analytic events generated before re-registration will belong to the
+     * previous Gimbal app.
+     * <p>
+     * b>Note:</b> The adapter will start, but fail to listen for places if the application does
+     * not have the requisite permission(s).
+     *
+     * @param gimbalApiKey Gimbal API key String
+     * @return {@code true} if the adapter started, otherwise {@code false}.
+     */
+    public boolean start(@NonNull String gimbalApiKey) {
+        if (gimbalApiKey.trim().isEmpty()) {
+            Log.w(TAG, "Attempted to start Gimbal with empty API key");
+            return isAdapterStarted;
+        }
 
-    private CustomEvent createCustomEvent(final String eventName, final Visit visit, final int boundaryEvent) {
-        if (boundaryEvent == RegionEvent.BOUNDARY_EVENT_ENTER) {
-            return createCustomEventBuilder(eventName, visit, boundaryEvent).build();
+        String apiKeyPreference = getApiKeyPreference();
+        if (isAdapterStarted && !gimbalApiKey.equals(apiKeyPreference)) {
+            Log.w(TAG, String.format("Detected API key change '%s' -> '%s...'",
+                    apiKeyPreference == null ? "<null>" : apiKeyPreference.substring(0, 8) + "...",
+                    gimbalApiKey.substring(0, 8)));
+            setApiKeyPreference(gimbalApiKey);
+            Gimbal.setApiKey((Application)context.getApplicationContext(), gimbalApiKey);
+            Log.w(TAG, "Gimbal will use new API key upon next app start");
         } else {
-            return createCustomEventBuilder(eventName, visit, boundaryEvent)
-                    .addProperty("dwellTimeInSeconds", visit.getDwellTimeInMillis() / 1000)
-                    .build();
+            startAdapter(gimbalApiKey);
+        }
+        return isAdapterStarted;
+    }
+
+    /**
+     * Stops the adapter.
+     */
+    public void stop() {
+        if (!isAdapterStarted) {
+            Log.w(TAG, "stop() called when adapter was not started");
+            return;
+        }
+
+        try {
+            setStartedPreference(false);
+            Gimbal.stop();
+            isAdapterStarted = false;
+            PlaceManager.getInstance().removeListener(placeEventListener);
+            UAirship.shared(airship -> {
+                synchronized(airshipChannelListener) {
+                    if (airshipChannelListener.get() != null) {
+                        airship.getChannel().removeChannelListener(
+                                airshipChannelListener.getAndSet(null));
+                   }
+                }
+            });
+            Log.i(TAG, "Adapter Stopped");
+        } catch (Exception e) {
+            Log.w(TAG,"Caught exception stopping Gimbal. ", e);
         }
     }
 
-    private CustomEvent.Builder createCustomEventBuilder(String eventName, Visit visit, final int boundaryEvent) {
-        Attributes placeAttributes = visit.getPlace().getAttributes();
+    /**
+     * Check if the adapter is started or not.
+     */
+    public boolean isStarted() {
+        return isAdapterStarted;
+    }
 
-        CustomEvent.Builder builder = CustomEvent.newBuilder(eventName);
-        if (placeAttributes != null) {
-            for (String key : placeAttributes.getAllKeys()) {
-                builder.addProperty("GMBL_PA_" + key, placeAttributes.getValue(key));
-            }
-        }
+    /**
+     * Sets whether this Adapter should create a CustomEvent upon Gimbal Place entry.
+     * Defaults to `false`.  The value set here is persisted across app restarts.
+     *
+     * @param shouldTrackCustomEntryEvent specifies whether to track place entries as
+     *                                    Airship CustomEvents.
+     */
+    public void setShouldTrackCustomEntryEvent(boolean shouldTrackCustomEntryEvent) {
+        preferences.edit()
+                .putBoolean(TRACK_CUSTOM_ENTRY_PREFERENCE_KEY, shouldTrackCustomEntryEvent)
+                .apply();
+    }
 
-        return builder
-                .addProperty("visitID", visit.getVisitID())
-                .addProperty("placeIdentifier", visit.getPlace().getIdentifier())
-                .addProperty("placeName", visit.getPlace().getName())
-                .addProperty("source", SOURCE)
-                .addProperty("boundaryEvent", boundaryEvent);
+    /**
+     * Sets whether this Adapter should create a CustomEvent upon Gimbal Place departure.
+     * Defaults to `false`.  The value set here is persisted across app restarts.
+     *
+     * @param shouldTrackCustomExitEvent specifies whether to track place departures as
+     *                                    Airship CustomEvents.
+     */
+    public void setShouldTrackCustomExitEvent(boolean shouldTrackCustomExitEvent) {
+        preferences.edit()
+                .putBoolean(TRACK_CUSTOM_EXIT_PREFERENCE_KEY, shouldTrackCustomExitEvent)
+                .apply();
+    }
+
+    /**
+     * Sets whether this Adapter should create a RegionEvent upon Gimbal Place entry or departure.
+     * Defaults to `false`.  The value set here is persisted across app restarts.
+     *
+     * @param shouldTrackRegionEvent specifies whether to track place entries AND departures as
+     *                               Airship RegionEvents.
+     */
+    public void setShouldTrackRegionEvent(boolean shouldTrackRegionEvent) {
+        preferences.edit()
+                .putBoolean(TRACK_REGION_EVENT_PREFERENCE_KEY, shouldTrackRegionEvent)
+                .apply();
     }
 
     /**
@@ -288,248 +282,234 @@ public class AirshipAdapter {
         }
     }
 
-    /**
-     * Restores the last run state. If previously started it will start listening.
-     * This should be called early during app initialization in order to
-     * reliably process background location or beacon events. Called automatically by
-     * <code>AirshipAdapterInitializer</code> but may be called in `Application.onCreate()` if
-     * manual initialization is desired.
-     */
-    public void restore() {
-        String gimbalApiKey = preferences.getString(API_KEY_PREFERENCE, null);
-        boolean previouslyStarted = preferences.getBoolean(STARTED_PREFERENCE, false);
-        if (gimbalApiKey != null && previouslyStarted) {
-            Log.i(TAG, "Restoring Gimbal Adapter");
-            startAdapter(gimbalApiKey);
-            if (isStarted()) {
-                Log.i(TAG, "Gimbal adapter restored");
-            } else {
-                Log.e(TAG, "Failed to restore Gimbal adapter");
-            }
-        }
-    }
-
-    /**
-     * Starts the adapter.
-     * <p>
-     * b>Note:</b> The adapter will fail to listen for places if the application does not have proper
-     * permissions. Use {@link #isPermissionGranted()} to check for permissions and {@link #startWithPermissionPrompt(String, PermissionResultCallback)}.
-     * to prompt the user for permissions while starting the adapter.
-     *
-     * @param gimbalApiKey The Gimbal API key.
-     * @return {@code true} if the adapter started, otherwise {@code false}.
-     */
-    @RequiresPermission(ACCESS_FINE_LOCATION)
-    public boolean start(@NonNull String gimbalApiKey) {
-        startAdapter(gimbalApiKey);
-        return isStarted();
-    }
-
-    /**
-     * Prompts for permission for ACCESS_FINE_LOCATION before starting the adapter.
-     * <p>
-     * b>Note:</b> You should only call this from a foregrounded activity. This will prompt the user
-     * for permissions even if the application is currently in the background.
-     *
-     * @param gimbalApiKey The Gimbal API key.
-     */
-    public void startWithPermissionPrompt(@NonNull final String gimbalApiKey) {
-        startWithPermissionPrompt(gimbalApiKey, null);
-    }
-
-    /**
-     * Prompts for permission for ACCESS_FINE_LOCATION before starting the adapter.
-     * <p>
-     * b>Note:</b> You should only call this from a foregrounded activity. This will prompt the user
-     * for permissions even if the application is currently in the background.
-     *
-     * @param gimbalApiKey The Gimbal API key.
-     * @param callback     Optional callback to get the result of the permission prompt.
-     */
-    public void startWithPermissionPrompt(@NonNull final String gimbalApiKey, @Nullable final PermissionResultCallback callback) {
-        requestPermissionsTask = new RequestPermissionsTask(context.getApplicationContext(), enabled -> {
-            if (enabled) {
-                //noinspection MissingPermission
-                startAdapter(gimbalApiKey);
-            }
-
-            if (callback != null) {
-                callback.onResult(enabled);
-            }
-        });
-
-        requestPermissionsTask.executeOnExecutor(AsyncTask.THREAD_POOL_EXECUTOR, ACCESS_FINE_LOCATION);
-    }
-
-
     private void startAdapter(@NonNull String gimbalApiKey) {
         if (isAdapterStarted) {
             return;
         }
 
-        preferences.edit()
-                .putString(API_KEY_PREFERENCE, gimbalApiKey)
-                .putBoolean(STARTED_PREFERENCE, true)
-                .apply();
-
         try {
-            Gimbal.setApiKey((Application) context.getApplicationContext(), gimbalApiKey);
+            setStartedPreference(true);
+            setApiKeyPreference(gimbalApiKey);
+            Gimbal.setApiKey((Application)context.getApplicationContext(), gimbalApiKey);
             Gimbal.start();
+            isAdapterStarted = Gimbal.isStarted();
             PlaceManager.getInstance().addListener(placeEventListener);
-            updateDeviceAttributes();
-            Log.i(TAG, String.format("Gimbal Adapter started. Gimbal.isStarted: %b, Gimbal application instance identifier: %s", Gimbal.isStarted(), Gimbal.getApplicationInstanceIdentifier()));
-            isAdapterStarted = true;
-            UAirship.shared(airship -> {
-                updateDeviceAttributes();
-                airship.getChannel().addChannelListener(new AirshipChannelListener() {
-                    @Override
-                    public void onChannelCreated(@NonNull String channelId) {
-                        updateDeviceAttributes();
-                    }
+            UAirship.shared(this::onAirshipReady);
 
-                    @Override
-                    public void onChannelUpdated(@NonNull String channelId) {
-                    }
-                });
-            });
+            Log.i(TAG, String.format("Gimbal Adapter started. Gimbal.isStarted: %b, Gimbal application instance identifier: %s",
+                    Gimbal.isStarted(), Gimbal.getApplicationInstanceIdentifier()));
         } catch (Exception e) {
+            isAdapterStarted = false;
             Log.e(TAG,"Failed to start Gimbal.", e);
         }
     }
 
-    /**
-     * Stops the adapter.
-     */
-    public void stop() {
-        if (!isStarted()) {
-            Log.w(TAG, "stop() called when adapter was not started");
-            return;
-        }
+    @Nullable
+    private String getApiKeyPreference() {
+        return preferences.getString(API_KEY_PREFERENCE, null);
+    }
 
-        if (requestPermissionsTask != null) {
-            requestPermissionsTask.cancel(true);
-        }
-
+    private void setApiKeyPreference(@NonNull String gimbalApiKey) {
         preferences.edit()
-                .putBoolean(STARTED_PREFERENCE, false)
+                .putString(API_KEY_PREFERENCE, gimbalApiKey)
                 .apply();
+    }
 
-        try {
-            Gimbal.stop();
-            PlaceManager.getInstance().removeListener(placeEventListener);
-        } catch (Exception e) {
-            Log.w(TAG,"Caught exception stopping Gimbal. ", e);
+    private boolean getStartedPreference() {
+        return preferences.getBoolean(STARTED_PREFERENCE, false);
+    }
+
+    private void setStartedPreference(boolean started) {
+        preferences.edit()
+                .putBoolean(STARTED_PREFERENCE, started)
+                .apply();
+    }
+
+    private synchronized void onAirshipReady(@NonNull UAirship airship) {
+        if (!isAdapterStarted || !(UAirship.isFlying() || UAirship.isTakingOff())) {
+            Log.w(TAG, "onAirshipReady called when adapter or Airship is not actually ready");
             return;
         }
 
-        isAdapterStarted = false;
+        updateDeviceAttributes(airship);
 
-        Log.i(TAG, "Adapter Stopped");
-    }
+        synchronized (airshipChannelListener) {
+            airshipChannelListener.set(new AirshipChannelListener() {
+                @Override
+                public void onChannelCreated(@NonNull String channelId) {
+                    updateDeviceAttributes(airship);
+                }
 
-    /**
-     * Check if the adapter is started or not.
-     */
-    public boolean isStarted() {
-        try {
-            return isAdapterStarted && Gimbal.isStarted();
-        } catch (Exception e) {
-            Log.w(TAG,"Unable to check Gimbal.isStarted().", e);
-            return false;
+                @Override
+                public void onChannelUpdated(@NonNull String channelId) {
+                    updateDeviceAttributes(airship);
+                }
+            });
+            airship.getChannel().addChannelListener(airshipChannelListener.get());
         }
-    }
 
-    /**
-     * Checks if the application has been granted ACCESS_FINE_LOCATION for Gimbal.
-     *
-     * @return {@code true} if permissions have been granted, otherwise {@code false}.
-     */
-    public boolean isPermissionGranted() {
-        return ContextCompat.checkSelfPermission(context, ACCESS_FINE_LOCATION) == PackageManager.PERMISSION_GRANTED;
-    }
-
-    /**
-     * Called when the airship channel is created.
-     */
-    public void onAirshipChannelCreated() {
-        if (isStarted()) {
-            updateDeviceAttributes();
-        }
-    }
-
-    /**
-     * Set whether the adapter should create a CustomEvent upon Gimbal Place entry.
-     * */
-    public void setShouldTrackCustomEntryEvent(Boolean shouldTrackCustomEntryEvent) {
-        preferences.edit().putBoolean(TRACK_CUSTOM_ENTRY_PREFERENCE_KEY, shouldTrackCustomEntryEvent).apply();
-    }
-
-    /**
-     * Set whether the adapter should create a CustomEvent upon Gimbal Place exit.
-     * */
-    public void setShouldTrackCustomExitEvent(Boolean shouldTrackCustomExitEvent) {
-        preferences.edit().putBoolean(TRACK_CUSTOM_EXIT_PREFERENCE_KEY, shouldTrackCustomExitEvent).apply();
-    }
-
-    /**
-     * Set whether the adapter should create a CustomEvent upon Gimbal Place exit.
-     * */
-    public void setShouldTrackRegionEvent(Boolean shouldTrackRegionEvent) {
-        preferences.edit().putBoolean(TRACK_REGION_EVENT_PREFERENCE_KEY, shouldTrackRegionEvent).apply();
+        processCachedVisits();
     }
 
     /**
      * Updates Gimbal and Urban Airship device attributes.
      */
-    private void updateDeviceAttributes() {
+    private void updateDeviceAttributes(@NonNull UAirship airship) {
         DeviceAttributesManager deviceAttributesManager = DeviceAttributesManager.getInstance();
-
         if (deviceAttributesManager == null) {
             return;
         }
 
-        String namedUserId = UAirship.shared().getContact().getNamedUserId();
+        String namedUserId = airship.getContact().getNamedUserId();
         deviceAttributesManager.setDeviceAttribute(GIMBAL_UA_NAMED_USER_ID, namedUserId);
 
-        String channelId = UAirship.shared().getChannel().getId();
+        String channelId = airship.getChannel().getId();
         deviceAttributesManager.setDeviceAttribute(GIMBAL_UA_CHANNEL_ID, channelId);
 
         String gimbalInstanceId = Gimbal.getApplicationInstanceIdentifier();
         if (gimbalInstanceId != null) {
-            UAirship.shared().getAnalytics().editAssociatedIdentifiers().addIdentifier(UA_GIMBAL_APPLICATION_INSTANCE_ID, gimbalInstanceId).apply();
+            airship.getAnalytics().editAssociatedIdentifiers()
+                    .addIdentifier(UA_GIMBAL_APPLICATION_INSTANCE_ID, gimbalInstanceId).apply();
         }
     }
 
-    private static class RequestPermissionsTask extends AsyncTask<String, Void, Boolean> {
+    private void processCachedVisits() {
+        synchronized (cachedVisits) {
+            for (CachedVisit cachedVisit : cachedVisits) {
+                createAirshipEvent(cachedVisit.visit, cachedVisit.regionEvent);
+            }
+            cachedVisits.clear();
+        }
+    }
 
-        @SuppressLint("StaticFieldLeak")
-        private final Context context;
-        private final PermissionResultCallback callback;
+    /**
+     * Listener for Gimbal place events. Creates an analytics event
+     * corresponding to boundary event type, and Event type preference.
+     */
+    private final PlaceEventListener placeEventListener = new PlaceEventListener() {
+        @Override
+        public void onVisitStart(@NonNull final Visit visit) {
+            Log.i(TAG, "Entered place: " + visit.getPlace().getName() + " date: " +
+                    DateUtils.createIso8601TimeStamp(visit.getArrivalTimeInMillis()));
 
-
-        RequestPermissionsTask(Context context, PermissionResultCallback callback) {
-            this.context = context;
-            this.callback = callback;
+            synchronized (cachedVisits) {
+                if (isAirshipReady()) {
+                    createAirshipEvent(visit, RegionEvent.BOUNDARY_EVENT_ENTER);
+                } else {
+                    cachedVisits.add(new CachedVisit(visit, RegionEvent.BOUNDARY_EVENT_ENTER));
+                }
+            }
         }
 
         @Override
-        protected Boolean doInBackground(String... permissions) {
-            int[] result = HelperActivity.requestPermissions(context, permissions);
-            for (int element : result) {
-                if (element == PackageManager.PERMISSION_GRANTED) {
-                    return true;
+        public void onVisitEnd(@NonNull final Visit visit) {
+            Log.i(TAG, "Exited place: " + visit.getPlace().getName() + " date: " +
+                    DateUtils.createIso8601TimeStamp(visit.getArrivalTimeInMillis()) + "Exit date:" +
+                    DateUtils.createIso8601TimeStamp(visit.getDepartureTimeInMillis()));
+
+            synchronized (cachedVisits) {
+                if (isAirshipReady()) {
+                    createAirshipEvent(visit, RegionEvent.BOUNDARY_EVENT_EXIT);
+                } else {
+                    cachedVisits.add(new CachedVisit(visit, RegionEvent.BOUNDARY_EVENT_EXIT));
+                }
+            }
+        }
+    };
+
+
+    private void createAirshipEvent(Visit visit, int regionEvent) {
+        if (!isAirshipReady()) {
+            Log.w(TAG, "Airship is not ready");
+            return;
+        }
+        UAirship airship = UAirship.shared();
+        synchronized (listeners) {
+            if (regionEvent == RegionEvent.BOUNDARY_EVENT_ENTER) {
+                if (preferences.getBoolean(TRACK_REGION_EVENT_PREFERENCE_KEY, TRACK_REGION_EVENT_DEFAULT)) {
+                    RegionEvent event = createRegionEvent(visit, RegionEvent.BOUNDARY_EVENT_ENTER);
+
+                    airship.getAnalytics().addEvent(event);
+
+                    for (Listener listener : listeners) {
+                        listener.onRegionEntered(event, visit);
+                    }
+                }
+
+                if (preferences.getBoolean(TRACK_CUSTOM_ENTRY_PREFERENCE_KEY, TRACK_CUSTOM_ENTRY_DEFAULT)) {
+                    CustomEvent event = createCustomEvent(CUSTOM_ENTRY_EVENT_NAME, visit, RegionEvent.BOUNDARY_EVENT_ENTER);
+
+                    airship.getAnalytics().addEvent(event);
+
+                    for (Listener listener : listeners) {
+                        listener.onCustomRegionEntry(event, visit);
+                    }
                 }
             }
 
-            return false;
-        }
+            if (regionEvent == RegionEvent.BOUNDARY_EVENT_EXIT) {
+                if (preferences.getBoolean(TRACK_REGION_EVENT_PREFERENCE_KEY, TRACK_REGION_EVENT_DEFAULT)) {
+                    RegionEvent event = createRegionEvent(visit, RegionEvent.BOUNDARY_EVENT_EXIT);
 
-        @Override
-        protected void onPostExecute(Boolean result) {
-            if (callback != null) {
-                callback.onResult(result);
+                    airship.getAnalytics().addEvent(event);
+
+                    for (Listener listener : listeners) {
+                        listener.onRegionExited(event, visit);
+                    }
+                }
+
+                if (preferences.getBoolean(TRACK_CUSTOM_EXIT_PREFERENCE_KEY, TRACK_CUSTOM_EXIT_DEFAULT)) {
+                    CustomEvent event = createCustomEvent(CUSTOM_EXIT_EVENT_NAME, visit, RegionEvent.BOUNDARY_EVENT_EXIT);
+
+                    airship.getAnalytics().addEvent(event);
+
+                    for (Listener listener : listeners) {
+                        listener.onCustomRegionExit(event, visit);
+                    }
+                }
             }
         }
+    }
+
+    private boolean isAirshipReady() {
+        return UAirship.isFlying() || UAirship.isTakingOff();
+    }
+
+    private RegionEvent createRegionEvent(Visit visit, int boundaryEvent) {
+        return RegionEvent.newBuilder()
+                .setBoundaryEvent(boundaryEvent)
+                .setSource(SOURCE)
+                .setRegionId(visit.getPlace().getIdentifier())
+                .build();
+    }
+
+    private CustomEvent createCustomEvent(final String eventName, final Visit visit, final int boundaryEvent) {
+        if (boundaryEvent == RegionEvent.BOUNDARY_EVENT_ENTER) {
+            return createCustomEventBuilder(eventName, visit, boundaryEvent)
+                    .build();
+        } else {
+            return createCustomEventBuilder(eventName, visit, boundaryEvent)
+                    .addProperty("dwellTimeInSeconds", visit.getDwellTimeInMillis() / 1000)
+                    .build();
+        }
+    }
+
+    private CustomEvent.Builder createCustomEventBuilder(String eventName, Visit visit, final int boundaryEvent) {
+        Attributes placeAttributes = visit.getPlace().getAttributes();
+
+        CustomEvent.Builder builder = CustomEvent.newBuilder(eventName);
+        if (placeAttributes != null) {
+            for (String key : placeAttributes.getAllKeys()) {
+                builder.addProperty("GMBL_PA_" + key, placeAttributes.getValue(key));
+            }
+        }
+
+        return builder
+                .addProperty("visitID", visit.getVisitID())
+                .addProperty("placeIdentifier", visit.getPlace().getIdentifier())
+                .addProperty("placeName", visit.getPlace().getName())
+                .addProperty("source", SOURCE)
+                .addProperty("boundaryEvent", boundaryEvent);
     }
 
     private static class CachedVisit {

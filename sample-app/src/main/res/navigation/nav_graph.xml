@@ -19,5 +19,9 @@
         android:id="@+id/permissionFragment"
         android:name="com.gimbal.airship.sample.presentation.permission.PermissionFragment"
         android:label="PermissionFragment"
-        tools:layout="@layout/fragment_permission"/>
+        tools:layout="@layout/fragment_permission">
+        <argument
+            android:name="permissionsToRequest"
+            app:argType="string[]" />
+    </fragment>
 </navigation>

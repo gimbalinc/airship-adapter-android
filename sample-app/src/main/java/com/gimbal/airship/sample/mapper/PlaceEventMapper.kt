@@ -3,29 +3,29 @@ package com.gimbal.airship.sample.mapper
 import com.gimbal.airship.sample.data.PlaceEventDataModel
 import com.gimbal.airship.sample.domain.PlaceEventDomainModel
 import com.gimbal.android.Visit
-import java.text.SimpleDateFormat
-import java.util.Date
-import java.util.Locale
+import java.time.Instant
+import java.util.*
 
-val Visit.toLocalDataModel: PlaceEventDataModel
-    get() = PlaceEventDataModel(
-        id = "$arrivalTimeInMillis$departureTimeInMillis",
-        place = this.place.name,
-        arrivalTimeInMillis = this.arrivalTimeInMillis,
-        departureTimeInMillis = this.departureTimeInMillis
+val Visit.toDomainModel: PlaceEventDomainModel
+    get() = PlaceEventDomainModel(
+        placeName = this.place.name,
+        isArrival = this.departureTimeInMillis == 0L,
+        timestamp = if (this.departureTimeInMillis == 0L)
+            Instant.ofEpochMilli(this.arrivalTimeInMillis)
+        else Instant.ofEpochMilli(this.departureTimeInMillis)
     )
+
+val PlaceEventDomainModel.toLocalDataModel: PlaceEventDataModel
+    get() = PlaceEventDataModel(
+        id = UUID.randomUUID(),
+        placeName = this.placeName,
+        isArrival = this.isArrival,
+        timestamp = this.timestamp.toEpochMilli()
+   )
 
 val PlaceEventDataModel.toDomainModel: PlaceEventDomainModel
     get() = PlaceEventDomainModel(
-        place = this.place,
-        isArrival = this.departureTimeInMillis == 0L,
-        time = if (this.departureTimeInMillis == 0L)
-            this.arrivalTimeInMillis.toDateString
-        else this.departureTimeInMillis.toDateString
+        placeName = this.placeName,
+        isArrival = this.isArrival,
+        timestamp = Instant.ofEpochMilli(this.timestamp)
     )
-
-val Long.toDateString: String
-    get() {
-        val formatter = SimpleDateFormat("M/dd/yy, h:mm a", Locale.getDefault())
-        return formatter.format(Date(this))
-    }
