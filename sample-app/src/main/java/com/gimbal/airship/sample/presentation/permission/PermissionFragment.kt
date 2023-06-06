@@ -33,21 +33,23 @@ class PermissionFragment : Fragment(R.layout.fragment_permission) {
         val pages = mutableListOf<PageAdapter.Page>()
         for (permission in args.permissionsToRequest) {
             when(permission) {
-                ACCESS_FINE_LOCATION -> pages.add(
-                    PageAdapter.Page(
-                        getString(R.string.location_permission_title),
-                        getString(R.string.location_permission_body),
-                        listOf(ACCESS_COARSE_LOCATION, ACCESS_FINE_LOCATION)
+                ACCESS_FINE_LOCATION -> {
+                    pages.add(
+                        PageAdapter.Page(
+                            getString(R.string.location_permission_title),
+                            getString(R.string.location_permission_body),
+                            listOf(ACCESS_COARSE_LOCATION, ACCESS_FINE_LOCATION)
+                        )
                     )
-                )
-                ACCESS_BACKGROUND_LOCATION -> pages.add(
-                    PageAdapter.Page(
-                        getString(R.string.background_permission_title),
-                        getString(R.string.background_permission_body,
-                            context?.packageManager?.backgroundPermissionOptionLabel.toString()),
-                        listOf(ACCESS_BACKGROUND_LOCATION)
+                    pages.add(
+                        PageAdapter.Page(
+                            getString(R.string.background_permission_title),
+                            getString(R.string.background_permission_body,
+                                context?.packageManager?.backgroundPermissionOptionLabel.toString()),
+                            listOf(ACCESS_BACKGROUND_LOCATION)
+                        )
                     )
-                )
+                }
                 BLUETOOTH_SCAN -> pages.add(
                     PageAdapter.Page(
                         getString(R.string.bluetooth_permission_title),
@@ -83,7 +85,8 @@ class PermissionFragment : Fragment(R.layout.fragment_permission) {
             } else if (permissionGrantMap[ACCESS_FINE_LOCATION] == true) {
                 // This presumes that your app requires FINE location to be granted, and nothing
                 // more for Gimbal SDK to be started.
-                viewModel.adapterEnabled.value = true
+                // Pass in the value of POST_NOTIFICATIONS so for `UAirship.pushManager.userNotificationsEnabled`
+                viewModel.onPermissionGranted(permissionGrantMap[POST_NOTIFICATIONS] == true)
             }
             nextPageOrDone()
         }

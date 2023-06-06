@@ -68,13 +68,6 @@ class MainFragment : Fragment(R.layout.fragment_main) {
             }
         }, viewLifecycleOwner, Lifecycle.State.RESUMED)
 
-        val permissionsToRequestWithoutRationale = permissionsToRequest(false)
-        if (permissionsToRequestWithoutRationale.isNotEmpty()) {
-            requestPermissionsLauncher.launch(permissionsToRequestWithoutRationale.toTypedArray())
-        } else {
-            requestPermissionsWithRationale()
-        }
-
         val adapter = PlaceEventAdapter(listOf())
         binding.recycleView.adapter = adapter
 
@@ -92,7 +85,36 @@ class MainFragment : Fragment(R.layout.fragment_main) {
             binding.switchEnabled.isChecked = it
         }
         binding.switchEnabled.setOnCheckedChangeListener { _, isChecked ->
-            viewModel.adapterEnabled.value = isChecked
+            val permissionsToRequestWithoutRationale = permissionsToRequest(false)
+            if (isChecked && permissionsToRequestWithoutRationale.isNotEmpty()) {
+                requestPermissionsWithRationale()
+                binding.switchEnabled.isChecked = false
+            }
+            else if (isChecked && permissionsToRequestWithoutRationale.isEmpty()) {
+                Timber.e("Permissions denied.")
+                val builder = AlertDialog.Builder(requireContext())
+
+                builder.setMessage("In order to grant permissions you will have to go to the app settings.")
+                    .setTitle("Permissions Denied")
+                    .setPositiveButton("Ok") { dialog: DialogInterface, which: Int ->
+                        dialog.dismiss()
+                    }
+
+                val dialog = builder.create()
+                dialog.show()
+                binding.switchEnabled.isChecked = false
+                // TODO alert telling you to check settings to enable permissions
+//                requestPermissionsWithRationale()
+//                requestPermissionsLauncher.launch(permissionsToRequestWithoutRationale.toTypedArray())
+            }
+            else {
+//                requestPermissionsWithRationale()
+                viewModel.adapterEnabled.value = isChecked
+                viewModel.onEnabledSwitchValueChanged(
+                    isChecked,
+                    hasPermission(POST_NOTIFICATIONS, Build.VERSION_CODES.TIRAMISU)
+                )
+            }
         }
         updatePermissionTextValues()
     }
@@ -102,7 +124,6 @@ class MainFragment : Fragment(R.layout.fragment_main) {
         val desiredPermissions: List<Pair<String, Int?>> = listOf(
             Pair(ACCESS_COARSE_LOCATION, null),
             Pair(ACCESS_FINE_LOCATION, null),
-            Pair(ACCESS_BACKGROUND_LOCATION, Build.VERSION_CODES.Q),
             Pair(BLUETOOTH_SCAN, Build.VERSION_CODES.S),
             Pair(POST_NOTIFICATIONS, Build.VERSION_CODES.TIRAMISU)
         )
@@ -136,12 +157,14 @@ class MainFragment : Fragment(R.layout.fragment_main) {
         }
 
     private fun requestPermissionsWithRationale() {
-        val permissionsWithRationale = permissionsToRequest(true)
+        val permissionsWithRationale = permissionsToRequest(false)
         if (permissionsWithRationale.isNotEmpty()) {
             findNavController()
                 .navigate(MainFragmentDirections.actionMainFragmentToPermissionFragment(
                     permissionsWithRationale.toTypedArray()
                 ))
+        } else {
+            Timber.e("Could not find any permissions to request.")
         }
     }
 

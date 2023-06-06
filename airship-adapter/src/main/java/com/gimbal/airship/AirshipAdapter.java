@@ -338,11 +338,13 @@ public class AirshipAdapter {
                 @Override
                 public void onChannelCreated(@NonNull String channelId) {
                     updateDeviceAttributes(airship);
+                    Log.d(TAG, "Channel ID: " + channelId);
                 }
 
                 @Override
                 public void onChannelUpdated(@NonNull String channelId) {
                     updateDeviceAttributes(airship);
+                    Log.d(TAG, "Channel ID: " + channelId);
                 }
             });
             airship.getChannel().addChannelListener(airshipChannelListener.get());
