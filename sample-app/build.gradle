@@ -11,7 +11,7 @@ android {
     compileSdk 33
 
     defaultConfig {
-        applicationId "com.gimbal.airship.android"
+        applicationId "com.gimbal.airship.sample"
         minSdk 21
         targetSdk 33
         versionCode 1
