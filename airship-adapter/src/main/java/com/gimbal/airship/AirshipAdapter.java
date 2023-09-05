@@ -351,11 +351,6 @@ public class AirshipAdapter {
                 public void onChannelCreated(@NonNull String channelId) {
                     updateDeviceAttributes(airship);
                 }
-
-                @Override
-                public void onChannelUpdated(@NonNull String channelId) {
-                    updateDeviceAttributes(airship);
-                }
             });
             airship.getChannel().addChannelListener(airshipChannelListener.get());
         }
