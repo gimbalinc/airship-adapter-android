@@ -2,15 +2,15 @@
 
 buildscript {
     ext {
-        adapterVersion = '2.0.1'
+        adapterVersion = '2.0.2'
 
         // Dependencies
         airshipVersion = '17.2.0'
-        gimbalVersion = '4.9.1'
+        gimbalVersion = '4.9.2'
 
         // Android SDK versions
-        compileSdkVersion = 33
-        targetSdkVersion = 33
+        compileSdkVersion = 34
+        targetSdkVersion = 34
         minSdkVersion = 21
 
         // Gradle plugins
