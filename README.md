@@ -14,7 +14,7 @@ with the Airship SDK for Android.
 To install it add the following dependency to your application's build.gradle file:
 
 ```groovy
-   implementation 'com.gimbal.android:airship-adapter:2.0.1'
+   implementation 'com.gimbal.android:airship-adapter:2.0.3'
 ```
 
 ## Start the adapter
