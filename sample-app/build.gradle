@@ -8,17 +8,19 @@ plugins {
 }
 
 android {
-    compileSdk 34
-
+    compileSdk 35
+    namespace "com.gimbal.airship.sample"
     defaultConfig {
-        applicationId "com.gimbal.airship.android"
-        minSdk 21
-        targetSdk 34
+        applicationId "com.gimbal.airship.sample"//"com.gimbal.airship.android"
+        minSdk 23
+        targetSdk 35
         versionCode 1
         versionName "1.0"
 
         testInstrumentationRunner "androidx.test.runner.AndroidJUnitRunner"
     }
+
+
 
     buildTypes {
         release {
@@ -28,14 +30,16 @@ android {
     }
     buildFeatures {
         viewBinding = true
+        buildConfig true
+
     }
     compileOptions {
-        sourceCompatibility JavaVersion.VERSION_1_8
-        targetCompatibility JavaVersion.VERSION_1_8
+        sourceCompatibility JavaVersion.VERSION_17
+        targetCompatibility JavaVersion.VERSION_17
         coreLibraryDesugaringEnabled true
     }
     kotlinOptions {
-        jvmTarget = '1.8'
+        jvmTarget = '17'
     }
     kapt {
         correctErrorTypes true
@@ -49,7 +53,7 @@ dependencies {
 
     implementation project(':airship-adapter')
 
-    implementation 'androidx.core:core-ktx:1.9.0'
+    implementation 'androidx.core:core-ktx:1.7.1'
     implementation 'androidx.appcompat:appcompat:1.6.1'
 
     // android UI
@@ -61,6 +65,9 @@ dependencies {
     implementation "androidx.lifecycle:lifecycle-livedata-ktx:2.5.1"
     implementation "androidx.lifecycle:lifecycle-process:2.5.1"
     implementation "androidx.activity:activity-ktx:1.6.1"
+
+    implementation 'com.google.android.gms:play-services-location:21.2.0'
+
 
     // local persistence
     implementation "androidx.room:room-runtime:$room_version"
@@ -82,6 +89,7 @@ dependencies {
     // Airship
     implementation "com.urbanairship.android:urbanairship-automation:$airshipVersion"
     implementation "com.urbanairship.android:urbanairship-fcm:$airshipVersion"
+
 
     coreLibraryDesugaring("com.android.tools:desugar_jdk_libs:1.1.5")
 

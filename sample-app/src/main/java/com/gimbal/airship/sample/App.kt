@@ -5,6 +5,7 @@ import com.gimbal.airship.AirshipAdapter
 import com.gimbal.airship.sample.domain.PlaceEventRepository
 import com.gimbal.airship.sample.mapper.toDomainModel
 import com.gimbal.android.Visit
+import com.google.firebase.FirebaseApp
 import com.urbanairship.analytics.CustomEvent
 import com.urbanairship.analytics.location.RegionEvent
 import dagger.hilt.android.HiltAndroidApp
@@ -20,6 +21,10 @@ class App : Application() {
         super.onCreate()
 
         initTimber()
+
+        if (FirebaseApp.getApps(this).isEmpty()) {
+            FirebaseApp.initializeApp(this)
+        }
 
         airshipAdapter.addListener(object : AirshipAdapter.Listener {
             override fun onRegionEntered(event: RegionEvent, visit: Visit) {
