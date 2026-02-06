@@ -72,11 +72,5 @@ object AppModule {
         @ApplicationContext context: Context
     ): AirshipAdapter = AirshipAdapter.shared(context)
 
-    @Provides
-    @Singleton
-    fun provideGimbalIntegration(
-        airshipAdapter: AirshipAdapter
-    ): GimbalIntegration {
-        return GimbalIntegration(airshipAdapter)
-    }
+    // GimbalIntegration is automatically provided by Hilt via @Inject constructor
 }

@@ -13,5 +13,11 @@ class NavHostActivity : AppCompatActivity() {
         super.onCreate(savedInstanceState)
         binding = ActivityNavHostBinding.inflate(layoutInflater)
         setContentView(binding.root)
+        
+        // Ensure ActionBar is shown and properly configured
+        supportActionBar?.apply {
+            setDisplayShowTitleEnabled(true)
+            setDisplayHomeAsUpEnabled(false)
+        }
     }
 }

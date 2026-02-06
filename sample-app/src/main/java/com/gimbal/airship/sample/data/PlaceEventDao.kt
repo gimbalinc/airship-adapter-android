@@ -15,5 +15,5 @@ interface PlaceEventDao {
     fun getPlaceEvents(): Flow<List<PlaceEventDataModel>>
 
     @Query("DELETE FROM place_events")
-    suspend fun deleteAllPlaceEvents()
+    fun deleteAllPlaceEvents(): Int
 }
