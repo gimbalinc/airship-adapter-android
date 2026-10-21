@@ -4,11 +4,17 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [3.0.1] - 2026-10-20
+
+### Changed
+
+- Update Airship Android SDK to 20.12.2 (compatible with Airship React Native 26.x).
+
 ## [3.0.0] - 2026-01-23
 
 ### Changed
 
-- Update `AirshipVersion` to 20.1.0.
+- Migrate to Airship Android SDK 20.x (`UAirship` → `Airship`, `RegionEvent.Boundary` APIs).
 - Target / compile against Android API 36
 
 ## [2.0.5] - 2025-02-27
