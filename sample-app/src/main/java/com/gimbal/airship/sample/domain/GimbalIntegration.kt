@@ -11,12 +11,14 @@ import com.gimbal.airship.AirshipAdapter
 import com.gimbal.android.Gimbal
 import com.gimbal.android.GimbalDebugger
 import com.google.firebase.FirebaseApp
-import com.urbanairship.UAirship
+import com.urbanairship.Airship
+import android.app.Application
 import timber.log.Timber
 import javax.inject.Inject
 
 class GimbalIntegration @Inject constructor(
-    private val airshipAdapter: AirshipAdapter
+    private val airshipAdapter: AirshipAdapter,
+    private val application: Application
 ) {
     private companion object {
         const val GIMBAL_API_KEY = "[YOUR GIMBAL API KEY]"
@@ -36,7 +38,7 @@ class GimbalIntegration @Inject constructor(
     }
 
     private fun startAndConfigureAdapter() {
-        val context = UAirship.getApplicationContext()
+        val context = application.applicationContext
 
 
         val hasForegroundLocation = ContextCompat.checkSelfPermission(
@@ -63,8 +65,8 @@ class GimbalIntegration @Inject constructor(
             context.startActivity(intent)
             return
         }
-        UAirship.shared {
-            it.pushManager.userNotificationsEnabled = true
+        Airship.onReady { airship ->
+            airship.push.userNotificationsEnabled = true
             Timber.i("Airship Push Notifications Enabled.")
         }
         airshipAdapter.setShouldTrackCustomEntryEvent(true)

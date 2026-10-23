@@ -18,11 +18,12 @@ import com.gimbal.android.Gimbal;
 import com.gimbal.android.PlaceEventListener;
 import com.gimbal.android.PlaceManager;
 import com.gimbal.android.Visit;
-import com.urbanairship.UAirship;
+import com.urbanairship.Airship;
 import com.urbanairship.analytics.CustomEvent;
 import com.urbanairship.analytics.location.RegionEvent;
 import com.urbanairship.channel.AirshipChannelListener;
-import com.urbanairship.util.DateUtils;
+import java.time.Instant;
+import java.time.format.DateTimeFormatter;
 
 import java.util.LinkedList;
 import java.util.List;
@@ -47,6 +48,7 @@ public class AirshipAdapter {
 
     private static final String TAG = "GimbalAdapter";
     private static final String SOURCE = "Gimbal";
+    private static final DateTimeFormatter ISO_INSTANT_FORMATTER = DateTimeFormatter.ISO_INSTANT;
 
     // UA to Gimbal Device Attributes
     private static final String GIMBAL_UA_NAMED_USER_ID = "ua.nameduser.id";
@@ -205,7 +207,7 @@ public class AirshipAdapter {
             isAdapterStarted = false;
             PlaceManager.getInstance().removeListener(placeEventListener);
             if (isAirshipReady()) {
-                UAirship.shared(airship -> {
+                Airship.onReady(airship -> {
                     synchronized (airshipChannelListener) {
                         if (airshipChannelListener.get() != null) {
                             airship.getChannel().removeChannelListener(
@@ -306,7 +308,7 @@ public class AirshipAdapter {
             Gimbal.start();
             isAdapterStarted = Gimbal.isStarted();
             PlaceManager.getInstance().addListener(placeEventListener);
-            UAirship.shared(this::onAirshipReady);
+            Airship.onReady(this::onAirshipReady);
 
             Log.i(TAG, String.format("Gimbal Adapter started. Gimbal.isStarted: %b, Gimbal application instance identifier: %s",
                     Gimbal.isStarted(), Gimbal.getApplicationInstanceIdentifier()));
@@ -337,7 +339,7 @@ public class AirshipAdapter {
                 .apply();
     }
 
-    private synchronized void onAirshipReady(@NonNull UAirship airship) {
+    private synchronized void onAirshipReady(@NonNull Airship airship) {
         if (!isAdapterStarted || !isAirshipReady()) {
             Log.w(TAG, "OnReadyCallback invoked when adapter or Airship is not actually ready");
             return;
@@ -361,7 +363,7 @@ public class AirshipAdapter {
     /**
      * Updates Gimbal and Urban Airship device attributes.
      */
-    private void updateDeviceAttributes(@NonNull UAirship airship) {
+    private void updateDeviceAttributes(@NonNull Airship airship) {
         DeviceAttributesManager deviceAttributesManager = DeviceAttributesManager.getInstance();
         if (deviceAttributesManager == null) {
             return;
@@ -397,13 +399,13 @@ public class AirshipAdapter {
         @Override
         public void onVisitStart(@NonNull final Visit visit) {
             Log.i(TAG, "Entered place: " + visit.getPlace().getName() + " date: " +
-                    DateUtils.createIso8601TimeStamp(visit.getArrivalTimeInMillis()));
+                    ISO_INSTANT_FORMATTER.format(Instant.ofEpochMilli(visit.getArrivalTimeInMillis())));
 
             synchronized (cachedVisits) {
                 if (isAirshipReady()) {
-                    createAirshipEvent(visit, RegionEvent.BOUNDARY_EVENT_ENTER);
+                    createAirshipEvent(visit, RegionEvent.Boundary.ENTER);
                 } else {
-                    cachedVisits.add(new CachedVisit(visit, RegionEvent.BOUNDARY_EVENT_ENTER));
+                    cachedVisits.add(new CachedVisit(visit, RegionEvent.Boundary.ENTER));
                 }
             }
         }
@@ -411,87 +413,87 @@ public class AirshipAdapter {
         @Override
         public void onVisitEnd(@NonNull final Visit visit) {
             Log.i(TAG, "Exited place: " + visit.getPlace().getName() + " date: " +
-                    DateUtils.createIso8601TimeStamp(visit.getArrivalTimeInMillis()) + "Exit date:" +
-                    DateUtils.createIso8601TimeStamp(visit.getDepartureTimeInMillis()));
+                    ISO_INSTANT_FORMATTER.format(Instant.ofEpochMilli(visit.getArrivalTimeInMillis())) + "Exit date:" +
+                    ISO_INSTANT_FORMATTER.format(Instant.ofEpochMilli(visit.getDepartureTimeInMillis())));
 
             synchronized (cachedVisits) {
                 if (isAirshipReady()) {
-                    createAirshipEvent(visit, RegionEvent.BOUNDARY_EVENT_EXIT);
+                    createAirshipEvent(visit, RegionEvent.Boundary.EXIT);
                 } else {
-                    cachedVisits.add(new CachedVisit(visit, RegionEvent.BOUNDARY_EVENT_EXIT));
+                    cachedVisits.add(new CachedVisit(visit, RegionEvent.Boundary.EXIT));
                 }
             }
         }
     };
 
 
-    private void createAirshipEvent(Visit visit, int regionEvent) {
+    private void createAirshipEvent(Visit visit, RegionEvent.Boundary regionEvent) {
         if (!isAirshipReady()) {
             Log.w(TAG, "Airship is not ready");
             return;
         }
-        UAirship airship = UAirship.shared();
-        synchronized (listeners) {
-            if (regionEvent == RegionEvent.BOUNDARY_EVENT_ENTER) {
-                if (preferences.getBoolean(TRACK_REGION_EVENT_PREFERENCE_KEY, TRACK_REGION_EVENT_DEFAULT)) {
-                    RegionEvent event = createRegionEvent(visit, RegionEvent.BOUNDARY_EVENT_ENTER);
+        // Use onReady to get Airship instance and call instance methods
+        // This avoids RestrictedApi lint errors by using instance methods within the callback
+        Airship.onReady(airship -> {
+            synchronized (listeners) {
+                if (regionEvent == RegionEvent.Boundary.ENTER) {
+                    if (preferences.getBoolean(TRACK_REGION_EVENT_PREFERENCE_KEY, TRACK_REGION_EVENT_DEFAULT)) {
+                        RegionEvent event = createRegionEvent(visit, RegionEvent.Boundary.ENTER);
 
-                    airship.getAnalytics().addEvent(event);
+                        airship.getAnalytics().addEvent(event);
 
-                    for (Listener listener : listeners) {
-                        listener.onRegionEntered(event, visit);
+                        for (Listener listener : listeners) {
+                            listener.onRegionEntered(event, visit);
+                        }
+                    }
+
+                    if (preferences.getBoolean(TRACK_CUSTOM_ENTRY_PREFERENCE_KEY, TRACK_CUSTOM_ENTRY_DEFAULT)) {
+                        CustomEvent event = createCustomEvent(CUSTOM_ENTRY_EVENT_NAME, visit, RegionEvent.Boundary.ENTER);
+
+                        airship.getAnalytics().addEvent(event);
+
+                        for (Listener listener : listeners) {
+                            listener.onCustomRegionEntry(event, visit);
+                        }
                     }
                 }
 
-                if (preferences.getBoolean(TRACK_CUSTOM_ENTRY_PREFERENCE_KEY, TRACK_CUSTOM_ENTRY_DEFAULT)) {
-                    CustomEvent event = createCustomEvent(CUSTOM_ENTRY_EVENT_NAME, visit, RegionEvent.BOUNDARY_EVENT_ENTER);
+                if (regionEvent == RegionEvent.Boundary.EXIT) {
+                    if (preferences.getBoolean(TRACK_REGION_EVENT_PREFERENCE_KEY, TRACK_REGION_EVENT_DEFAULT)) {
+                        RegionEvent event = createRegionEvent(visit, RegionEvent.Boundary.EXIT);
 
-                    airship.getAnalytics().addEvent(event);
+                        airship.getAnalytics().addEvent(event);
 
-                    for (Listener listener : listeners) {
-                        listener.onCustomRegionEntry(event, visit);
+                        for (Listener listener : listeners) {
+                            listener.onRegionExited(event, visit);
+                        }
+                    }
+
+                    if (preferences.getBoolean(TRACK_CUSTOM_EXIT_PREFERENCE_KEY, TRACK_CUSTOM_EXIT_DEFAULT)) {
+                        CustomEvent event = createCustomEvent(CUSTOM_EXIT_EVENT_NAME, visit, RegionEvent.Boundary.EXIT);
+
+                        airship.getAnalytics().addEvent(event);
+
+                        for (Listener listener : listeners) {
+                            listener.onCustomRegionExit(event, visit);
+                        }
                     }
                 }
             }
-
-            if (regionEvent == RegionEvent.BOUNDARY_EVENT_EXIT) {
-                if (preferences.getBoolean(TRACK_REGION_EVENT_PREFERENCE_KEY, TRACK_REGION_EVENT_DEFAULT)) {
-                    RegionEvent event = createRegionEvent(visit, RegionEvent.BOUNDARY_EVENT_EXIT);
-
-                    airship.getAnalytics().addEvent(event);
-
-                    for (Listener listener : listeners) {
-                        listener.onRegionExited(event, visit);
-                    }
-                }
-
-                if (preferences.getBoolean(TRACK_CUSTOM_EXIT_PREFERENCE_KEY, TRACK_CUSTOM_EXIT_DEFAULT)) {
-                    CustomEvent event = createCustomEvent(CUSTOM_EXIT_EVENT_NAME, visit, RegionEvent.BOUNDARY_EVENT_EXIT);
-
-                    airship.getAnalytics().addEvent(event);
-
-                    for (Listener listener : listeners) {
-                        listener.onCustomRegionExit(event, visit);
-                    }
-                }
-            }
-        }
+        });
     }
 
     private boolean isAirshipReady() {
-        return UAirship.isFlying() || UAirship.isTakingOff();
+        return Airship.isFlying() || Airship.isTakingOff();
     }
 
-    private RegionEvent createRegionEvent(Visit visit, int boundaryEvent) {
-        return RegionEvent.newBuilder()
-                .setBoundaryEvent(boundaryEvent)
-                .setSource(SOURCE)
-                .setRegionId(visit.getPlace().getIdentifier())
+    private RegionEvent createRegionEvent(Visit visit, RegionEvent.Boundary boundaryEvent) {
+        return RegionEvent.newBuilder(visit.getPlace().getIdentifier(), boundaryEvent)
                 .build();
     }
 
-    private CustomEvent createCustomEvent(final String eventName, final Visit visit, final int boundaryEvent) {
-        if (boundaryEvent == RegionEvent.BOUNDARY_EVENT_ENTER) {
+    private CustomEvent createCustomEvent(final String eventName, final Visit visit, final RegionEvent.Boundary boundaryEvent) {
+        if (boundaryEvent == RegionEvent.Boundary.ENTER) {
             return createCustomEventBuilder(eventName, visit, boundaryEvent)
                     .build();
         } else {
@@ -501,7 +503,7 @@ public class AirshipAdapter {
         }
     }
 
-    private CustomEvent.Builder createCustomEventBuilder(String eventName, Visit visit, final int boundaryEvent) {
+    private CustomEvent.Builder createCustomEventBuilder(String eventName, Visit visit, final RegionEvent.Boundary boundaryEvent) {
         Attributes placeAttributes = visit.getPlace().getAttributes();
 
         CustomEvent.Builder builder = CustomEvent.newBuilder(eventName);
@@ -516,14 +518,18 @@ public class AirshipAdapter {
                 .addProperty("placeIdentifier", visit.getPlace().getIdentifier())
                 .addProperty("placeName", visit.getPlace().getName())
                 .addProperty("source", SOURCE)
-                .addProperty("boundaryEvent", boundaryEvent);
+                .addProperty("boundaryEvent", boundaryToInt(boundaryEvent));
+    }
+
+    private static int boundaryToInt(RegionEvent.Boundary boundary) {
+        return boundary == RegionEvent.Boundary.ENTER ? 0 : 1;
     }
 
     private static class CachedVisit {
         Visit visit;
-        int regionEvent;
+        RegionEvent.Boundary regionEvent;
 
-        CachedVisit(Visit visit, int event) {
+        CachedVisit(Visit visit, RegionEvent.Boundary event) {
             this.visit = visit;
             this.regionEvent = event;
         }

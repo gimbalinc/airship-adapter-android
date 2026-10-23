@@ -26,9 +26,17 @@ android {
         debug {}
     }
 
+    lint {
+        // This adapter library legitimately needs to call Airship SDK APIs
+        // from a different library group (com.gimbal.android calling com.urbanairship.android)
+        // This is the expected behavior for an adapter/bridge library
+        disable 'RestrictedApi'
+    }
+
     compileOptions {
-        sourceCompatibility JavaVersion.VERSION_17
-        targetCompatibility JavaVersion.VERSION_17
+        sourceCompatibility JavaVersion.VERSION_1_8
+        targetCompatibility JavaVersion.VERSION_1_8
+        coreLibraryDesugaringEnabled true
     }
 
     publishing {
@@ -44,55 +52,71 @@ dependencies {
     implementation "com.gimbal.android.v4:gimbal-slf4j-impl:${rootProject.gimbalVersion}"
     compileOnly "com.urbanairship.android:urbanairship-core:${rootProject.airshipVersion}"
 
+    coreLibraryDesugaring "com.android.tools:desugar_jdk_libs:2.0.4"
     implementation "androidx.startup:startup-runtime:1.1.1"
 }
 
-publishing {
-    publications {
-        release(MavenPublication) {
-            afterEvaluate {
+afterEvaluate {
+    publishing {
+        publications {
+            release(MavenPublication) {
                 from components.release
+
+                groupId = 'com.gimbal.android'
+                artifactId = 'airship-adapter'
+                version = rootProject.adapterVersion
+
+                pom {
+                    name.set("Gimbal Airship Adapter")
+                    description.set(project.description)
+                    url.set("https://github.com/PaeDae/android-airship-adapter")
+
+                    licenses {
+                        license {
+                            name.set("The Apache Software License, Version 2.0")
+                            url.set("http://www.apache.org/licenses/LICENSE-2.0.txt")
+                            distribution.set("repo")
+                        }
+                    }
+
+                    developers {
+                        developer {
+                            name.set("Gimbal Developers")
+                            email.set("developers@gimbal.com")
+                            organization.set("Infillion")
+                            organizationUrl.set("https://infillion.com")
+                        }
+                    }
+
+                    contributors {
+                        contributor {
+                            name.set("Urban Airship")
+                        }
+                    }
+
+                    scm {
+                        connection.set("scm:git:https://github.com/PaeDae/android-airship-adapter.git")
+                        developerConnection.set("scm:git:git@github.com/PaeDae/android-airship-adapter.git")
+                        url.set("https://github.com/PaeDae/android-airship-adapter")
+                    }
+                }
             }
+        }
 
-            pom {
-                name = "Gimbal Airship Adapter"
-                description = project.description
-                url = "https://docs.gimbal.com"
-
-                licenses {
-                    license {
-                        name = 'The Apache Software License, Version 2.0'
-                        url = 'http://www.apache.org/licenses/LICENSE-2.0.txt'
-                        distribution = 'repo'
-                    }
-                }
-
-                developers {
-                    developer {
-                        name = 'Gimbal Developers'
-                        email = 'developers@gimbal.com'
-                        organization = 'Infillion'
-                        organizationUrl = 'https://infillion.com'
-                    }
-                }
-
-                contributors {
-                    contributor {
-                        name = 'Urban Airship'
-                    }
-                }
-
-                scm {
-                    connection = 'scm:git:https://github.com/PaeDae/android-airship-adapter.git'
-                    developerConnection = 'scm:git:git@github.com/PaeDae/android-airship-adapter.git'
-                    url = 'https://github.com/PaeDae/android-airship-adapter'
+        repositories {
+            maven {
+                name = "Central"
+                url = uri("https://ossrh-staging-api.central.sonatype.com/service/local/staging/deploy/maven2/")
+                credentials {
+                    username = findProperty("centralUsername")
+                    password = findProperty("centralPassword")
                 }
             }
         }
     }
-}
 
-signing {
-    sign publishing.publications.release
+    signing {
+        sign publishing.publications.release
+    }
 }
 

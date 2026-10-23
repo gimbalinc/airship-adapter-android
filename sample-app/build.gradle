@@ -8,7 +8,7 @@ plugins {
 }
 
 android {
-    compileSdk 35
+    compileSdk 36
     namespace "com.gimbal.airship.sample"
     defaultConfig {
         applicationId "com.gimbal.airship.sample"//"com.gimbal.airship.android"
@@ -49,7 +49,7 @@ android {
 dependencies {
     def nav_version = "2.5.3"
     def room_version = "2.5.0"
-    def hilt_version = "2.44"
+    def hilt_version = "2.56.1"
 
     implementation project(':airship-adapter')
 
@@ -67,6 +67,10 @@ dependencies {
     implementation "androidx.activity:activity-ktx:1.6.1"
 
     implementation 'com.google.android.gms:play-services-location:21.2.0'
+
+    // Firebase (for FirebaseApp)
+    implementation platform("com.google.firebase:firebase-bom:33.1.2")
+    implementation "com.google.firebase:firebase-common-ktx"
 
 
     // local persistence
@@ -87,11 +91,11 @@ dependencies {
     implementation "com.jakewharton.timber:timber:5.0.1"
 
     // Airship
-    implementation "com.urbanairship.android:urbanairship-automation:$airshipVersion"
-    implementation "com.urbanairship.android:urbanairship-fcm:$airshipVersion"
+    implementation "com.urbanairship.android:urbanairship-core:${rootProject.airshipVersion}"
+    implementation "com.urbanairship.android:urbanairship-fcm:${rootProject.airshipVersion}"
 
 
-    coreLibraryDesugaring("com.android.tools:desugar_jdk_libs:1.1.5")
+    coreLibraryDesugaring("com.android.tools:desugar_jdk_libs:2.0.4")
 
     // Testing
     testImplementation 'junit:junit:4.13.2'
